@@ -26,7 +26,7 @@ function createPgAdapter(connectionString) {
     text = text.replace(/N'((?:[^']|'')*)'/g, "'$1'");
 
     // 6. Handle T-SQL table variables and OUTPUT INSERTED for both INSERT and UPDATE
-    text = text.replace(/DECLARE\s+@\w+\s+TABLE\s*\([^)]*\)\s*;?\s*/gi, "");
+    text = text.replace(/DECLARE\s+@\w+\s+TABLE\s+[\s\S]*?;\s*/gi, "");
     text = text.replace(/;\s*SELECT\s+\*\s+FROM\s+@\w+\s*;?\s*$/gi, "");
 
     const outputMatch = text.match(/\bOUTPUT\s+([\s\S]*?)(?:\s+INTO\s+@\w+)?\s+(VALUES|WHERE)\b/i);
