@@ -39,22 +39,25 @@ function pickVideoDescription(v) {
 
 function createCommentElement(c, videoOwnerId) {
     const user = loadCurrentUser();
-    const currentUid = user?.nguoi_dung_id || user?.id;
+    const currentUid = user?.nguoi_dung_id || user?.id || user?.nguoidungid;
 
     const row = document.createElement("div");
     row.className = "comment-item";
-    const who = c.TenDangNhap || "Người dùng";
-    const avatar = c.AnhDaiDien || c.anh_dai_dien ? apiUrl(c.AnhDaiDien || c.anh_dai_dien) : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+    const who = c.TenDangNhap || c.ten_dang_nhap || c.tendangnhap || "Người dùng";
+    const rawAvatar = c.AnhDaiDien || c.anh_dai_dien || c.anhdaidien;
+    const avatar = rawAvatar ? apiUrl(rawAvatar) : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
     
     let when = "";
-    if (c.NgayTao || c.ngay_tao) {
-        const date = new Date(c.NgayTao || c.ngay_tao);
+    const rawDate = c.NgayTao || c.ngay_tao || c.ngaytao;
+    if (rawDate) {
+        const date = new Date(rawDate);
         when = date.toLocaleDateString("vi-VN");
     }
 
     const cId = c.Id || c.BinhLuanId || c.binh_luan_id || c.id;
-    const cOwnerId = c.NguoiDungId || c.nguoi_dung_id;
+    const cOwnerId = c.NguoiDungId || c.nguoi_dung_id || c.nguoidungid;
     const canDelete = currentUid && (currentUid == cOwnerId || currentUid == videoOwnerId);
+    const content = c.NoiDung || c.noi_dung || c.noidung || "";
 
     row.innerHTML = `
         <img src="${avatar}" class="comment-avatar">
@@ -63,7 +66,7 @@ function createCommentElement(c, videoOwnerId) {
                 <span>${escapeHtml(who)} <span style="font-weight: normal; color: #606060; font-size: 12px; margin-left: 8px;">${when}</span></span>
                 ${canDelete ? `<button onclick="deleteComment(${cId}, event)" style="background: none; border: none; color: #999; cursor: pointer; font-size: 11px;">Xoá</button>` : ''}
             </div>
-            <div class="comment-text">${escapeHtml(c.NoiDung || c.noi_dung || "")}</div>
+            <div class="comment-text">${escapeHtml(content)}</div>
         </div>
     `;
     return row;
@@ -92,7 +95,7 @@ function renderComments(comments, videoOwnerId) {
     }
     
     // Sắp xếp: Mới nhất lên đầu
-    const sorted = [...comments].sort((a, b) => new Date(b.NgayTao || b.ngay_tao) - new Date(a.NgayTao || a.ngay_tao));
+    const sorted = [...comments].sort((a, b) => new Date(b.NgayTao || b.ngay_tao || b.ngaytao) - new Date(a.NgayTao || a.ngay_tao || a.ngaytao));
 
     for (const c of sorted) {
         const row = createCommentElement(c, videoOwnerId);

@@ -1755,7 +1755,7 @@ app.get("/api/videos/:id/comments", async (req, res) => {
       .input("VideoId", sql.Int, Math.trunc(id))
       .query(
         "SELECT b.binh_luan_id AS Id, b.video_id AS VideoId, b.nguoi_dung_id AS NguoiDungId, " +
-          "b.noi_dung AS NoiDung, b.ngay_tao AS NgayTao, n.ten_dang_nhap AS TenDangNhap " +
+          "b.noi_dung AS NoiDung, b.ngay_tao AS NgayTao, n.ten_dang_nhap AS TenDangNhap, n.anh_dai_dien AS AnhDaiDien " +
           "FROM dbo.binh_luan b " +
           "LEFT JOIN dbo.nguoi_dung n ON n.nguoi_dung_id = b.nguoi_dung_id " +
           "WHERE b.video_id = @VideoId " +
