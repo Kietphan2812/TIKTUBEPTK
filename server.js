@@ -2105,21 +2105,17 @@ app.post("/api/videos/:id/likes/toggle", authenticateToken, async (req, res) => 
  */
 async function updateDailyStats(pool, videoId, type, increment = 1) {
   try {
-    // 1. Find the owner of the video to record stats for their dashboard
     const ownerRes = await pool.request()
       .input("Vid", sql.Int, videoId)
       .query("SELECT nguoi_dung_id FROM dbo.video WHERE video_id = @Vid");
     const ownerId = ownerRes.recordset?.[0]?.nguoi_dung_id;
     if (!ownerId) return;
 
-    // Today's date (local server time) formatted as YYYY-MM-DD for SQL DATE type
     const today = new Date();
-    // Use local date parts to avoid UTC shift issues for daily stats
     const dateStr = today.getFullYear() + "-" + 
                    String(today.getMonth() + 1).padStart(2, '0') + "-" + 
                    String(today.getDate()).padStart(2, '0');
     
-    // 2. Determine which column to update
     let column = "";
     if (type === 'view') column = "so_luot_xem";
     else if (type === 'like') column = "so_luot_thich";
@@ -2127,28 +2123,26 @@ async function updateDailyStats(pool, videoId, type, increment = 1) {
     
     if (!column) return;
 
-    // 3. Upsert: Update if exists for today, else Insert
-    await pool.request()
+    const existCheck = await pool.request()
       .input("Uid", sql.Int, ownerId)
       .input("Today", sql.VarChar(10), dateStr)
-      .query(`
-        IF EXISTS (SELECT 1 FROM dbo.thong_ke WHERE nguoi_dung_id = @Uid AND ngay = @Today)
-        BEGIN
-          UPDATE dbo.thong_ke 
-          SET ${column} = CASE WHEN ${column} + ${increment} < 0 THEN 0 ELSE ${column} + ${increment} END, 
-              ngay_cap_nhat = GETUTCDATE()
-          WHERE nguoi_dung_id = @Uid AND ngay = @Today
-        END
-        ELSE
-        BEGIN
-          -- Only insert if increment is positive (don't create negative starting records)
-          IF ${increment} > 0
-          BEGIN
-            INSERT INTO dbo.thong_ke (nguoi_dung_id, ngay, ${column}, ngay_cap_nhat)
-            VALUES (@Uid, @Today, ${increment}, GETUTCDATE())
-          END
-        END
-      `);
+      .query("SELECT thong_ke_id, " + column + " AS current_val FROM dbo.thong_ke WHERE nguoi_dung_id = @Uid AND ngay = @Today");
+
+    if (existCheck.recordset && existCheck.recordset.length > 0) {
+      const currentVal = Number(existCheck.recordset[0].current_val ?? 0);
+      const newVal = Math.max(0, currentVal + increment);
+      await pool.request()
+        .input("Uid", sql.Int, ownerId)
+        .input("Today", sql.VarChar(10), dateStr)
+        .input("Val", sql.Int, newVal)
+        .query(`UPDATE dbo.thong_ke SET ${column} = @Val, ngay_cap_nhat = CURRENT_TIMESTAMP WHERE nguoi_dung_id = @Uid AND ngay = @Today`);
+    } else if (increment > 0) {
+      await pool.request()
+        .input("Uid", sql.Int, ownerId)
+        .input("Today", sql.VarChar(10), dateStr)
+        .input("Val", sql.Int, increment)
+        .query(`INSERT INTO dbo.thong_ke (nguoi_dung_id, ngay, ${column}, ngay_cap_nhat) VALUES (@Uid, @Today, @Val, CURRENT_TIMESTAMP)`);
+    }
   } catch (err) {
     console.error(`[stats] Failed to update daily stats (${type}):`, err.message);
   }
@@ -2158,8 +2152,9 @@ async function updateDailyStats(pool, videoId, type, increment = 1) {
  * Statistics endpoint: Returns aggregated stats for user's videos
  */
 app.get("/api/stats/:userId", authenticateToken, async (req, res) => {
+  let userId = null;
   try {
-    const userId = req.user.nguoi_dung_id;
+    userId = req.user?.nguoi_dung_id || Number(req.params.userId);
     console.log("[stats] Loading stats for userId:", userId);
     if (!Number.isFinite(userId) || userId <= 0) {
       console.warn("[stats] Invalid userId:", req.params.userId);
@@ -2167,7 +2162,7 @@ app.get("/api/stats/:userId", authenticateToken, async (req, res) => {
     }
     const pool = await sql.connect(sqlConfig);
     
-    // Get real-time total stats from dbo.video for better accuracy than the history table
+    // Get real-time total stats from dbo.video
     const totalResult = await pool
       .request()
       .input("Uid", sql.Int, userId)
@@ -2186,44 +2181,68 @@ app.get("/api/stats/:userId", authenticateToken, async (req, res) => {
     
     const row = totalResult.recordset?.[0] || {};
     const totalStats = {
-      totalViews: Number(row.totalViews ?? 0),
-      totalLikes: Number(row.totalLikes ?? 0),
-      totalComments: Number(row.totalComments ?? 0)
+      totalViews: Number(row.totalViews ?? row.totalviews ?? 0),
+      totalLikes: Number(row.totalLikes ?? row.totallikes ?? 0),
+      totalComments: Number(row.totalComments ?? row.totalcomments ?? 0)
     };
     
-    // Get daily stats (last 60 days) - Using Recursive CTE instead of spt_values for better compatibility
-    const dailyResult = await pool
-      .request()
-      .input("Uid", sql.Int, userId)
-      .input("Days", sql.Int, 60)
-      .query(
-        "WITH date_range AS ( " +
-          "SELECT CAST(DATEADD(DAY, -(@Days-1), GETDATE()) AS DATE) AS date " +
-          "UNION ALL " +
-          "SELECT DATEADD(DAY, 1, date) " +
-          "FROM date_range " +
-          "WHERE date < CAST(GETDATE() AS DATE) " +
-        ") " +
-        "SELECT " +
-          "d.date, " +
-          "ISNULL((SELECT so_luot_xem FROM dbo.thong_ke tk WHERE tk.nguoi_dung_id = @Uid AND tk.ngay = d.date), 0) AS views, " +
-          "ISNULL((SELECT COUNT(*) FROM dbo.luot_thich lt " +
-          "  INNER JOIN dbo.video v2 ON lt.video_id = v2.video_id " +
-          "  WHERE v2.nguoi_dung_id = @Uid AND CAST(lt.ngay_tao AS DATE) = d.date), 0) AS likes, " +
-          "ISNULL((SELECT COUNT(*) FROM dbo.binh_luan bl " +
-          "  INNER JOIN dbo.video v3 ON bl.video_id = v3.video_id " +
-          "  WHERE v3.nguoi_dung_id = @Uid AND CAST(bl.ngay_tao AS DATE) = d.date), 0) AS comments " +
+    let dailyStats = [];
+    if (process.env.DATABASE_URL) {
+      // PostgreSQL generate_series (clean and fast)
+      const pgDaily = await pool.request()
+        .input("Uid", sql.Int, userId)
+        .query(
+          "WITH date_range AS ( " +
+            "SELECT CAST(d AS DATE) AS date " +
+            "FROM generate_series(CURRENT_DATE - INTERVAL '59 days', CURRENT_DATE, INTERVAL '1 day') AS d " +
+          ") " +
+          "SELECT " +
+            "d.date, " +
+            "COALESCE((SELECT so_luot_xem FROM thong_ke tk WHERE tk.nguoi_dung_id = @Uid AND tk.ngay = d.date), 0) AS views, " +
+            "COALESCE((SELECT COUNT(*) FROM luot_thich lt INNER JOIN video v2 ON lt.video_id = v2.video_id WHERE v2.nguoi_dung_id = @Uid AND CAST(lt.ngay_tao AS DATE) = d.date), 0) AS likes, " +
+            "COALESCE((SELECT COUNT(*) FROM binh_luan bl INNER JOIN video v3 ON bl.video_id = v3.video_id WHERE v3.nguoi_dung_id = @Uid AND CAST(bl.ngay_tao AS DATE) = d.date), 0) AS comments " +
+          "FROM date_range d " +
+          "ORDER BY d.date ASC"
+        );
+      dailyStats = (pgDaily.recordset || []).map(r => ({
+        date: r.date,
+        views: Number(r.views ?? 0),
+        likes: Number(r.likes ?? 0),
+        comments: Number(r.comments ?? 0)
+      }));
+    } else {
+      // MSSQL recursive CTE
+      const mssqlDaily = await pool.request()
+        .input("Uid", sql.Int, userId)
+        .input("Days", sql.Int, 60)
+        .query(
+          "WITH date_range AS ( " +
+            "SELECT CAST(DATEADD(DAY, -(@Days-1), GETDATE()) AS DATE) AS date " +
+            "UNION ALL " +
+            "SELECT DATEADD(DAY, 1, date) " +
+            "FROM date_range " +
+            "WHERE date < CAST(GETDATE() AS DATE) " +
+          ") " +
+          "SELECT " +
+            "d.date, " +
+            "ISNULL((SELECT so_luot_xem FROM dbo.thong_ke tk WHERE tk.nguoi_dung_id = @Uid AND tk.ngay = d.date), 0) AS views, " +
+            "ISNULL((SELECT COUNT(*) FROM dbo.luot_thich lt " +
+            "  INNER JOIN dbo.video v2 ON lt.video_id = v2.video_id " +
+            "  WHERE v2.nguoi_dung_id = @Uid AND CAST(lt.ngay_tao AS DATE) = d.date), 0) AS likes, " +
+            "ISNULL((SELECT COUNT(*) FROM dbo.binh_luan bl " +
+            "  INNER JOIN dbo.video v3 ON bl.video_id = v3.video_id " +
+            "  WHERE v3.nguoi_dung_id = @Uid AND CAST(bl.ngay_tao AS DATE) = d.date), 0) AS comments " +
           "FROM date_range d " +
           "ORDER BY d.date ASC " +
-        "OPTION (MAXRECURSION 366)"
-      );
-    
-    const dailyStats = (dailyResult.recordset || []).map(r => ({
-      date: r.date,
-      views: Number(r.views ?? 0),
-      likes: Number(r.likes ?? 0),
-      comments: Number(r.comments ?? 0)
-    }));
+          "OPTION (MAXRECURSION 366)"
+        );
+      dailyStats = (mssqlDaily.recordset || []).map(r => ({
+        date: r.date,
+        views: Number(r.views ?? 0),
+        likes: Number(r.likes ?? 0),
+        comments: Number(r.comments ?? 0)
+      }));
+    }
     
     console.log("[stats] Successfully loaded stats for userId:", userId, { dailyCount: dailyStats.length });
     res.json({ ok: true, totalStats, dailyStats });
