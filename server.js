@@ -1275,9 +1275,9 @@ app.get("/api/videos", optionalAuthenticateToken, async (req, res) => {
       q += " ORDER BY CASE WHEN dk.dang_ky_id IS NOT NULL THEN 0 ELSE 1 END ASC, v.video_id DESC";
     }
     
-    // Đọc ra từ View (Nằm trong thư mục Views của SSMS)
     const result = await request.query(q);
-    res.json({ ok: true, videos: result.recordset || [] });
+    const rows = (result.recordset || []).map((r) => videoFromRow(r));
+    res.json({ ok: true, videos: rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }

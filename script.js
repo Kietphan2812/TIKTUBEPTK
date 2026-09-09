@@ -268,17 +268,18 @@ function renderVideoCard(v) {
     card.style.cursor = "pointer";
     card.title = "Xem chi tiết và bình luận";
 
-    const uploaderId = v.NguoiDungId ?? v.nguoi_dung_id;
+    const uploaderId = v.NguoiDungId ?? v.nguoidungid ?? v.nguoi_dung_id;
+    const videoUrl = v.RelativeUrl || v.relativeurl || v.duong_dan_video;
 
     // Video container
     const video = document.createElement("video");
-    video.src = apiUrl(v.RelativeUrl);
+    video.src = apiUrl(videoUrl);
     video.controls = true;
     video.addEventListener("click", (e) => e.stopPropagation());
     
     // Kiểm tra giới hạn độ tuổi
     const userAge = parseInt(currentUser?.do_tuoi) || 0;
-    const isRestricted = (v.ForKids === 0 || v.ForKids === false);
+    const isRestricted = (v.ForKids === 0 || v.ForKids === false || v.forkids === false);
     const shouldWarn = isRestricted && userAge < 18;
 
     if (shouldWarn) {
@@ -325,7 +326,8 @@ function renderVideoCard(v) {
 
     // Avatar
     const avatarImg = document.createElement("img");
-    const avatarUrl = v.Avatar ? apiUrl(v.Avatar) : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+    const rawAvatar = v.Avatar || v.avatar || v.anh_dai_dien;
+    const avatarUrl = rawAvatar ? apiUrl(rawAvatar) : "https://cdn-icons-png.flaticon.com/512/149/149071.png";
     avatarImg.src = avatarUrl;
     avatarImg.className = "uploaderAvatar";
     avatarImg.style.width = "36px";
@@ -353,7 +355,7 @@ function renderVideoCard(v) {
     // Title
     const title = document.createElement("div");
     title.className = "videoTitle";
-    title.textContent = v.Title || v.FileName || "Video";
+    title.textContent = v.Title || v.title || v.FileName || "Video";
     title.style.margin = "0 0 4px 0";
     title.style.fontSize = "16px";
     title.style.lineHeight = "1.4";
@@ -366,16 +368,17 @@ function renderVideoCard(v) {
     // Uploader Name
     const uploader = document.createElement("div");
     uploader.className = "uploaderName";
+    const uploaderName = v.TenDangNhap || v.tendangnhap || v.ten_dang_nhap || "Người dùng ẩn danh";
     if (uploaderId) {
         const userLink = document.createElement("a");
         userLink.href = `user.html?id=${uploaderId}`;
-        userLink.textContent = v.TenDangNhap || "Người dùng ẩn danh";
+        userLink.textContent = uploaderName;
         userLink.style.textDecoration = "none";
         userLink.style.color = "inherit";
         userLink.onclick = (e) => e.stopPropagation();
         uploader.appendChild(userLink);
     } else {
-        uploader.textContent = v.TenDangNhap || "Người dùng ẩn danh";
+        uploader.textContent = uploaderName;
     }
     uploader.style.fontSize = "13px";
     uploader.style.color = "#606060";
@@ -387,14 +390,16 @@ function renderVideoCard(v) {
     meta.className = "videoMeta";
     
     let dateStr = "";
-    if (v.UploadedAt) {
-        const date = new Date(v.UploadedAt);
+    const rawDate = v.UploadedAt || v.uploadedat || v.ngay_tao;
+    if (rawDate) {
+        const date = new Date(rawDate);
         dateStr = date.toLocaleDateString("vi-VN");
     }
 
     let metaLine = "";
     const stats = [];
-    if (v.LuotXem != null) stats.push(`${v.LuotXem} lượt xem`);
+    const viewsCount = v.LuotXem ?? v.luotxem ?? v.luot_xem;
+    if (viewsCount != null) stats.push(`${viewsCount} lượt xem`);
     if (stats.length) {
         metaLine = stats.join(" · ") + (dateStr ? " · " + dateStr : "");
     } else {
@@ -408,7 +413,7 @@ function renderVideoCard(v) {
     infoContainer.appendChild(textContainer);
     card.appendChild(infoContainer);
 
-    const id = v.Id ?? v.id;
+    const id = v.Id ?? v.id ?? v.video_id;
     card.addEventListener("click", () => {
         if (id != null) window.location.href = `video.html?id=${encodeURIComponent(String(id))}`;
     });
