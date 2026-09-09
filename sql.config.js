@@ -20,8 +20,8 @@ function splitNamedInstance(serverValue) {
 // Defaults are aligned with your VSCode mssql connection (SQLEXPRESS + sa).
 const serverRaw = required("DB_SERVER", "127.0.0.1");
 const { server, instanceName } = splitNamedInstance(serverRaw);
-const portRaw = process.env.DB_PORT;
-const port = portRaw ? Number(portRaw) : undefined;
+const portRaw = process.env.DB_PORT || 1434;
+const port = portRaw ? Number(portRaw) : 1434;
 
 const sqlConfig = {
   user: required("DB_USER", "sa"),
