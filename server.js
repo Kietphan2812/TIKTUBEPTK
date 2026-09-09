@@ -38,18 +38,20 @@ async function uploadToCloudinary(filePath, resourceType = "auto", folder = "tik
   try {
     const stats = fs.existsSync(filePath) ? fs.statSync(filePath) : null;
     let res;
-    // For videos or files > 40MB, use chunked upload_large to support long 20m - 1hr videos without timeout
-    if (resourceType === "video" || (stats && stats.size > 40 * 1024 * 1024)) {
+    const kind = resourceType === "image" ? "image" : "video";
+    // Only use chunked upload_large for large files > 95MB to avoid chunking latency
+    if (kind === "video" && stats && stats.size > 95 * 1024 * 1024) {
       res = await cloudinary.uploader.upload_large(filePath, {
         resource_type: "video",
         folder: folder,
-        chunk_size: 6 * 1024 * 1024,
-        timeout: 600000,
+        chunk_size: 10 * 1024 * 1024,
+        timeout: 300000,
       });
     } else {
       res = await cloudinary.uploader.upload(filePath, {
-        resource_type: resourceType,
+        resource_type: kind,
         folder: folder,
+        timeout: 120000,
       });
     }
     try { fs.unlinkSync(filePath); } catch (_) {}
@@ -2372,37 +2374,22 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
     const probedDuration = await probeVideoDurationSeconds(absoluteFilePath);
     let durationSeconds = probedDuration > 0 ? probedDuration : clientDuration;
 
-    // Upload to Cloudinary for permanent storage
-    const cloudRes = await uploadToCloudinary(absoluteFilePath, "video", "tiktube_videos");
-    if (cloudRes && cloudRes.secure_url) {
-      relativeUrl = cloudRes.secure_url;
-      if (cloudRes.duration && Number(cloudRes.duration) > 0) {
-        durationSeconds = Math.round(Number(cloudRes.duration));
-      }
-    }
-
     // Process Thumbnail / Cover Image
     let thumbnailUrl = null;
+    let thumbLocalPath = null;
     const thumbnailFile = req.files?.thumbnail?.[0];
     const thumbnailData = getMultipartField(req.body, ["thumbnailData", "thumbnail_data"]);
 
     if (thumbnailFile) {
-      const thumbLocalPath = path.join(uploadsDir, thumbnailFile.filename);
-      const cloudThumb = await uploadToCloudinary(thumbLocalPath, "image", "tiktube_thumbnails");
-      thumbnailUrl = cloudThumb?.secure_url || `/uploads/${thumbnailFile.filename}`;
+      thumbLocalPath = path.join(uploadsDir, thumbnailFile.filename);
+      thumbnailUrl = `/uploads/${thumbnailFile.filename}`;
     } else if (thumbnailData && String(thumbnailData).startsWith("data:image/")) {
       try {
-        if (hasCloudinary) {
-          const cloudThumb = await cloudinary.uploader.upload(thumbnailData, { folder: "tiktube_thumbnails" });
-          thumbnailUrl = cloudThumb?.secure_url;
-        }
-        if (!thumbnailUrl) {
-          const base64Data = thumbnailData.replace(/^data:image\/\w+;base64,/, "");
-          const thumbFilename = `thumb-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
-          const thumbPath = path.join(uploadsDir, thumbFilename);
-          fs.writeFileSync(thumbPath, Buffer.from(base64Data, "base64"));
-          thumbnailUrl = `/uploads/${thumbFilename}`;
-        }
+        const base64Data = thumbnailData.replace(/^data:image\/\w+;base64,/, "");
+        const thumbFilename = `thumb-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
+        thumbLocalPath = path.join(uploadsDir, thumbFilename);
+        fs.writeFileSync(thumbLocalPath, Buffer.from(base64Data, "base64"));
+        thumbnailUrl = `/uploads/${thumbFilename}`;
       } catch (err) {
         console.warn("[upload] Thumbnail processing error:", err.message);
       }
@@ -2410,6 +2397,22 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
 
     if (!thumbnailUrl) {
       thumbnailUrl = relativeUrl;
+    }
+
+    // Upload Video and Thumbnail to Cloudinary IN PARALLEL to prevent 502 request timeout
+    const [cloudVideo, cloudThumb] = await Promise.all([
+      uploadToCloudinary(absoluteFilePath, "video", "tiktube_videos"),
+      thumbLocalPath ? uploadToCloudinary(thumbLocalPath, "image", "tiktube_thumbnails") : Promise.resolve(null)
+    ]);
+
+    if (cloudVideo && cloudVideo.secure_url) {
+      relativeUrl = cloudVideo.secure_url;
+      if (cloudVideo.duration && Number(cloudVideo.duration) > 0) {
+        durationSeconds = Math.round(Number(cloudVideo.duration));
+      }
+    }
+    if (cloudThumb && cloudThumb.secure_url) {
+      thumbnailUrl = cloudThumb.secure_url;
     }
 
     const pool = await sql.connect(sqlConfig);
