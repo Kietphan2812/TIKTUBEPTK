@@ -36,10 +36,22 @@ if (hasCloudinary) {
 async function uploadToCloudinary(filePath, resourceType = "auto", folder = "tiktube_media") {
   if (!hasCloudinary) return null;
   try {
-    const res = await cloudinary.uploader.upload(filePath, {
-      resource_type: resourceType,
-      folder: folder,
-    });
+    const stats = fs.existsSync(filePath) ? fs.statSync(filePath) : null;
+    let res;
+    // For videos or files > 40MB, use chunked upload_large to support long 20m - 1hr videos without timeout
+    if (resourceType === "video" || (stats && stats.size > 40 * 1024 * 1024)) {
+      res = await cloudinary.uploader.upload_large(filePath, {
+        resource_type: "video",
+        folder: folder,
+        chunk_size: 6 * 1024 * 1024,
+        timeout: 600000,
+      });
+    } else {
+      res = await cloudinary.uploader.upload(filePath, {
+        resource_type: resourceType,
+        folder: folder,
+      });
+    }
     try { fs.unlinkSync(filePath); } catch (_) {}
     return res;
   } catch (err) {
