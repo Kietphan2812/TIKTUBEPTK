@@ -2358,7 +2358,7 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
         "DECLARE @T TABLE (Id INT, Title NVARCHAR(255), Description NVARCHAR(MAX), RelativeUrl NVARCHAR(500), UploadedAt DATETIME); " +
         "INSERT INTO dbo.video (nguoi_dung_id, tieu_de, mo_ta, duong_dan_video, duong_dan_anh_bia, thoi_luong, luot_xem, ngay_tao, ngay_cap_nhat, danh_muc_id, tag_id, trang_thai, danh_cho_tre_em) " +
           "OUTPUT INSERTED.video_id AS Id, INSERTED.tieu_de AS Title, INSERTED.mo_ta AS Description, INSERTED.duong_dan_video AS RelativeUrl, INSERTED.ngay_tao AS UploadedAt INTO @T " +
-          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Path, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, N'cho_duyet', @ForKids); " +
+          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Path, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, N'da_duyet', @ForKids); " +
         "SELECT * FROM @T;"
       );
 
