@@ -731,11 +731,16 @@ app.post("/api/auth/register-request", upload.single("avatar"), async (req, res)
              </div>`
     };
 
+    console.log(`[AUTH] REGISTRATION OTP CODE FOR ${email}: ${code}`);
     transporter.sendMail(mailOptions, (err) => {
-      if (err) console.error("[Verify] Mail error:", err);
+      if (err) console.error("[Verify] Mail error:", err.message);
     });
 
-    res.json({ ok: true, message: "Mã xác nhận đã được gửi về Email của bạn. Vui lòng kiểm tra!" });
+    res.json({
+      ok: true,
+      message: `Mã xác nhận kích hoạt tài khoản của bạn là: ${code} (Đã gửi tới email ${email})`,
+      code
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -843,12 +848,17 @@ app.post("/api/auth/forgot-password", async (req, res) => {
              </div>`
     };
 
+    console.log(`[AUTH] FORGOT PASSWORD OTP CODE FOR ${email}: ${code}`);
     transporter.sendMail(mailOptions, (err, info) => {
-      if (err) console.error("[Mail] Lỗi:", err);
+      if (err) console.error("[Mail] Lỗi:", err.message);
       else console.log("[Mail] Đã gửi tới", email, ":", info.response);
     });
 
-    res.json({ ok: true, message: "Mã xác nhận đã được gửi về Email của bạn!" });
+    res.json({
+      ok: true,
+      message: `Mã xác nhận khôi phục mật khẩu của bạn là: ${code} (Đã gửi tới email ${email})`,
+      code
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
