@@ -25,17 +25,17 @@ function createPgAdapter(connectionString) {
     // 5. Replace N'...' with '...'
     text = text.replace(/N'((?:[^']|'')*)'/g, "'$1'");
 
-    // 6. Handle T-SQL table variables and OUTPUT INSERTED
+    // 6. Handle T-SQL table variables and OUTPUT INSERTED for both INSERT and UPDATE
     text = text.replace(/DECLARE\s+@\w+\s+TABLE\s*\([^)]*\)\s*;?\s*/gi, "");
     text = text.replace(/;\s*SELECT\s+\*\s+FROM\s+@\w+\s*;?\s*$/gi, "");
 
-    const outputMatch = text.match(/\bOUTPUT\s+([\s\S]*?)(?:\s+INTO\s+@\w+)?\s+VALUES/i);
+    const outputMatch = text.match(/\bOUTPUT\s+([\s\S]*?)(?:\s+INTO\s+@\w+)?\s+(VALUES|WHERE)\b/i);
     let returningCols = null;
     if (outputMatch) {
       returningCols = outputMatch[1]
         .replace(/INSERTED\./gi, "")
         .trim();
-      text = text.replace(outputMatch[0], "VALUES");
+      text = text.replace(outputMatch[0], outputMatch[2]);
     }
 
     // 7. Handle SELECT TOP (N) / SELECT TOP N
