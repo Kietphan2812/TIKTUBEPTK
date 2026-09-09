@@ -287,6 +287,46 @@
                 </div>
 
                 <div class="input-group">
+                    <label class="input-label" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Ảnh bìa (Ảnh nền đại diện video)</span>
+                        <span style="font-size: 12px; color: #666; font-weight: normal;">Chọn khung hình hoặc tải ảnh riêng</span>
+                    </label>
+                    
+                    <!-- Khung chọn khung hình từ video -->
+                    <div id="thumbnailSelectorContainer" style="display: none; margin-top: 10px; background: #fdfdfd; padding: 14px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 13px; font-weight: 600; color: #333;">1. Chọn khung hình từ video:</span>
+                            <span id="frameExtractStatus" style="font-size: 11px; color: #fe2c55;"></span>
+                        </div>
+                        <div id="videoFramesList" style="display: flex; gap: 10px; overflow-x: auto; padding: 6px 2px 10px; scrollbar-width: thin;">
+                            <!-- Frame thumbnails will be injected here -->
+                        </div>
+                        
+                        <div style="font-size: 13px; font-weight: 600; color: #333; margin: 12px 0 8px;">2. Hoặc tải ảnh bìa tùy chỉnh từ máy:</div>
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <input type="file" id="thumbnailInput" accept="image/*" style="display: none;" onchange="handleCustomThumbnailSelect(event)">
+                            <button type="button" class="btn btn-cancel" style="flex: 0; white-space: nowrap; padding: 8px 16px; font-size: 13px; border-radius: 6px;" onclick="document.getElementById('thumbnailInput').click()">
+                                📁 Chọn ảnh từ máy tính / điện thoại
+                            </button>
+                            <span id="thumbnailFileName" style="font-size: 12.5px; color: #666;">Chưa chọn tệp ảnh riêng</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Preview ảnh bìa đã chọn -->
+                    <div id="selectedThumbnailPreviewBox" style="margin-top: 12px; display: none; align-items: center; gap: 14px; background: #fff5f7; padding: 12px; border-radius: 8px; border: 1px solid #fed7e2;">
+                        <img id="selectedThumbnailImg" src="" style="width: 70px; height: 95px; object-fit: cover; border-radius: 6px; border: 2px solid #fe2c55; box-shadow: 0 2px 8px rgba(254, 44, 85, 0.2);">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="background: #fe2c55; color: white; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">Ảnh bìa đã chọn</span>
+                                <span id="selectedThumbSource" style="font-size: 12px; color: #555;">(Khung hình video)</span>
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">Ảnh này sẽ hiển thị làm ảnh nền đại diện cho video trên bảng tin và tìm kiếm</div>
+                            <button type="button" onclick="removeSelectedThumbnail()" style="margin-top: 6px; font-size: 12px; color: #fe2c55; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;">Đặt lại mặc định</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
                     <label class="input-label">Ai có thể xem video này?</label>
                     <div class="audience-options">
                         <label style="cursor:pointer; display: flex; align-items: center; gap: 8px;">
@@ -322,9 +362,12 @@
 
             <div class="upload-preview-container">
                 <div class="upload-preview">
-                    <div class="preview-video-box">
+                    <div class="preview-video-box" style="position: relative;">
                         <div id="videoPreviewPlaceholder">Xem trước video</div>
                         <video id="videoPreviewEl" style="width: 100%; height: 100%; object-fit: cover; display: none;" autoplay muted loop></video>
+                        <div id="previewCoverBadge" style="position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); color: white; font-size: 11px; padding: 4px 8px; border-radius: 6px; text-align: center; display: none;">
+                            🖼️ Đã chọn ảnh bìa
+                        </div>
                     </div>
                 </div>
             </div>
@@ -336,6 +379,9 @@
     <script src="config.js"></script>
     <script src="script.js"></script>
     <script>
+        window.selectedThumbnailBase64 = null;
+        window.selectedThumbnailFile = null;
+
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (file) {
@@ -343,7 +389,7 @@
                 info.innerHTML = `
                     <div style="color: var(--primary-color); font-weight: bold;">${file.name}</div>
                     <div style="font-size: 13px; color: #666;">(${(file.size / (1024 * 1024)).toFixed(2)} MB)</div>
-                    <div style="margin-top: 10px; color: #007bff; text-decoration: underline; font-size: 14px;">Nhấp để thay đổi</div>
+                    <div style="margin-top: 10px; color: #007bff; text-decoration: underline; font-size: 14px;">Nhấp để thay đổi video</div>
                 `;
                 
                 // Hiển thị preview
@@ -353,16 +399,182 @@
                 videoPreview.src = url;
                 videoPreview.style.display = 'block';
                 placeholder.style.display = 'none';
+
+                // Trích xuất các khung hình làm ảnh bìa
+                extractVideoFrames(file);
             }
         }
 
-        // Live preview mô tả (đã xóa các element text đè lên video)
+        // Trích xuất khung hình tự động từ video
+        async function extractVideoFrames(file) {
+            const container = document.getElementById('thumbnailSelectorContainer');
+            const framesList = document.getElementById('videoFramesList');
+            const statusEl = document.getElementById('frameExtractStatus');
+            
+            if (!container || !framesList) return;
+            container.style.display = 'block';
+            framesList.innerHTML = '<div style="font-size: 12px; color: #888; padding: 10px;">Đang trích xuất ảnh bìa từ video...</div>';
+            if (statusEl) statusEl.textContent = 'Đang trích xuất...';
+
+            try {
+                const videoUrl = URL.createObjectURL(file);
+                const tempVideo = document.createElement('video');
+                tempVideo.src = videoUrl;
+                tempVideo.muted = true;
+                tempVideo.playsInline = true;
+
+                await new Promise((resolve, reject) => {
+                    tempVideo.onloadedmetadata = () => resolve();
+                    tempVideo.onerror = (e) => reject(e);
+                });
+
+                const duration = tempVideo.duration || 10;
+                const timestamps = [0.08, 0.22, 0.38, 0.55, 0.72, 0.88].map(ratio => Math.min(duration - 0.2, Math.max(0.1, duration * ratio)));
+
+                framesList.innerHTML = '';
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                for (let i = 0; i < timestamps.length; i++) {
+                    const time = timestamps[i];
+                    await new Promise(res => {
+                        tempVideo.currentTime = time;
+                        tempVideo.onseeked = () => res();
+                    });
+
+                    canvas.width = 160;
+                    canvas.height = 220; // 9:16 portrait ratio
+                    
+                    // Draw video crop centered
+                    const vW = tempVideo.videoWidth || 160;
+                    const vH = tempVideo.videoHeight || 220;
+                    ctx.drawImage(tempVideo, 0, 0, vW, vH, 0, 0, canvas.width, canvas.height);
+
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    const mins = Math.floor(time / 60);
+                    const secs = Math.floor(time % 60);
+                    const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+                    const frameBox = document.createElement('div');
+                    frameBox.className = 'thumb-frame-card';
+                    frameBox.style = 'position: relative; flex-shrink: 0; width: 85px; height: 120px; border-radius: 8px; overflow: hidden; border: 2px solid #e5e7eb; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.08);';
+                    frameBox.innerHTML = `
+                        <img src="${dataUrl}" style="width: 100%; height: 100%; object-fit: cover;">
+                        <span style="position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.7); color: white; font-size: 10px; padding: 2px 5px; border-radius: 4px; font-weight: bold;">${timeStr}</span>
+                    `;
+
+                    frameBox.onclick = () => {
+                        selectFrameThumbnail(dataUrl, frameBox, `Khung hình tại ${timeStr}`);
+                    };
+
+                    framesList.appendChild(frameBox);
+
+                    // Tự động chọn khung hình đầu tiên làm mặc định
+                    if (i === 0 && !window.selectedThumbnailBase64 && !window.selectedThumbnailFile) {
+                        selectFrameThumbnail(dataUrl, frameBox, `Khung hình tại ${timeStr}`);
+                    }
+                }
+
+                if (statusEl) statusEl.textContent = 'Đã trích xuất xong ✓';
+            } catch (err) {
+                console.warn('Không thể trích xuất frame từ video:', err);
+                if (statusEl) statusEl.textContent = '';
+                framesList.innerHTML = '<div style="font-size: 12px; color: #888; padding: 8px;">Bạn có thể tải ảnh bìa riêng ở bên dưới.</div>';
+            }
+        }
+
+        function selectFrameThumbnail(dataUrl, frameEl, label) {
+            window.selectedThumbnailBase64 = dataUrl;
+            window.selectedThumbnailFile = null;
+
+            // Update UI highlight
+            document.querySelectorAll('.thumb-frame-card').forEach(el => {
+                el.style.borderColor = '#e5e7eb';
+                el.style.transform = 'scale(1)';
+            });
+            if (frameEl) {
+                frameEl.style.borderColor = '#fe2c55';
+                frameEl.style.transform = 'scale(1.05)';
+            }
+
+            // Update preview box
+            const previewBox = document.getElementById('selectedThumbnailPreviewBox');
+            const previewImg = document.getElementById('selectedThumbnailImg');
+            const sourceLabel = document.getElementById('selectedThumbSource');
+            const badge = document.getElementById('previewCoverBadge');
+            const videoPreview = document.getElementById('videoPreviewEl');
+
+            if (previewBox && previewImg) {
+                previewImg.src = dataUrl;
+                if (sourceLabel) sourceLabel.textContent = `(${label || 'Khung hình video'})`;
+                previewBox.style.display = 'flex';
+            }
+            if (badge) badge.style.display = 'block';
+            if (videoPreview) videoPreview.poster = dataUrl;
+        }
+
+        function handleCustomThumbnailSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            window.selectedThumbnailFile = file;
+            window.selectedThumbnailBase64 = null;
+
+            document.getElementById('thumbnailFileName').textContent = file.name;
+            
+            // Remove highlight on extracted frames
+            document.querySelectorAll('.thumb-frame-card').forEach(el => {
+                el.style.borderColor = '#e5e7eb';
+                el.style.transform = 'scale(1)';
+            });
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const url = e.target.result;
+                const previewBox = document.getElementById('selectedThumbnailPreviewBox');
+                const previewImg = document.getElementById('selectedThumbnailImg');
+                const sourceLabel = document.getElementById('selectedThumbSource');
+                const badge = document.getElementById('previewCoverBadge');
+                const videoPreview = document.getElementById('videoPreviewEl');
+
+                if (previewBox && previewImg) {
+                    previewImg.src = url;
+                    if (sourceLabel) sourceLabel.textContent = `(Ảnh tùy chỉnh: ${file.name})`;
+                    previewBox.style.display = 'flex';
+                }
+                if (badge) badge.style.display = 'block';
+                if (videoPreview) videoPreview.poster = url;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeSelectedThumbnail() {
+            window.selectedThumbnailBase64 = null;
+            window.selectedThumbnailFile = null;
+
+            const fileInput = document.getElementById('thumbnailInput');
+            if (fileInput) fileInput.value = '';
+
+            document.getElementById('thumbnailFileName').textContent = 'Chưa chọn tệp ảnh riêng';
+            document.getElementById('selectedThumbnailPreviewBox').style.display = 'none';
+            document.getElementById('previewCoverBadge').style.display = 'none';
+
+            document.querySelectorAll('.thumb-frame-card').forEach(el => {
+                el.style.borderColor = '#e5e7eb';
+                el.style.transform = 'scale(1)';
+            });
+
+            const videoPreview = document.getElementById('videoPreviewEl');
+            if (videoPreview) videoPreview.poster = '';
+        }
+
+        // Live preview mô tả
         document.getElementById('descriptionInput').addEventListener('input', (e) => {
-            // Có thể thêm logic xử lý khác ở đây nếu cần
+            // Live preview
         });
 
         window.addEventListener('DOMContentLoaded', () => {
-            // Khởi tạo các giá trị cần thiết
+            // Khởi tạo
         });
     </script>
     <script src="pwa.js"></script>

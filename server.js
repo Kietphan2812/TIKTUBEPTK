@@ -2337,12 +2337,19 @@ async function videoColumnsHandler(_req, res) {
   }
 }
 app.get("/api/db/video-columns", videoColumnsHandler);
-app.get("/api/video-columns", videoColumnsHandler);
+const uploadVideoFields = upload.fields([
+  { name: "video", maxCount: 1 },
+  { name: "thumbnail", maxCount: 1 },
+]);
 
-app.post("/api/videos", authenticateToken, upload.single("video"), async (req, res) => {
+app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) => {
   try {
     const ownerId = req.user.nguoi_dung_id;
     const { title, moTa: description } = readUploadMeta(req);
+    const videoFile = req.files?.video?.[0] || req.file;
+    if (!videoFile) {
+      return res.status(400).json({ ok: false, error: "Vui lòng chọn video để tải lên." });
+    }
     // eslint-disable-next-line no-console
     console.log("[upload]", {
       descLen: description.length,
@@ -2352,8 +2359,8 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
     const rawDuration = Number(getMultipartField(req.body, ["thoi_luong", "Thoi_luong"]));
     const clientDuration =
       Number.isFinite(rawDuration) && rawDuration >= 0 ? Math.trunc(rawDuration) : 0;
-    let relativeUrl = `/uploads/${req.file.filename}`;
-    const absoluteFilePath = path.join(uploadsDir, req.file.filename);
+    let relativeUrl = `/uploads/${videoFile.filename}`;
+    const absoluteFilePath = path.join(uploadsDir, videoFile.filename);
     const probedDuration = await probeVideoDurationSeconds(absoluteFilePath);
     let durationSeconds = probedDuration > 0 ? probedDuration : clientDuration;
 
@@ -2364,6 +2371,37 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
       if (cloudRes.duration && Number(cloudRes.duration) > 0) {
         durationSeconds = Math.round(Number(cloudRes.duration));
       }
+    }
+
+    // Process Thumbnail / Cover Image
+    let thumbnailUrl = null;
+    const thumbnailFile = req.files?.thumbnail?.[0];
+    const thumbnailData = getMultipartField(req.body, ["thumbnailData", "thumbnail_data"]);
+
+    if (thumbnailFile) {
+      const thumbLocalPath = path.join(uploadsDir, thumbnailFile.filename);
+      const cloudThumb = await uploadToCloudinary(thumbLocalPath, "image", "tiktube_thumbnails");
+      thumbnailUrl = cloudThumb?.secure_url || `/uploads/${thumbnailFile.filename}`;
+    } else if (thumbnailData && String(thumbnailData).startsWith("data:image/")) {
+      try {
+        if (hasCloudinary) {
+          const cloudThumb = await cloudinary.uploader.upload(thumbnailData, { folder: "tiktube_thumbnails" });
+          thumbnailUrl = cloudThumb?.secure_url;
+        }
+        if (!thumbnailUrl) {
+          const base64Data = thumbnailData.replace(/^data:image\/\w+;base64,/, "");
+          const thumbFilename = `thumb-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
+          const thumbPath = path.join(uploadsDir, thumbFilename);
+          fs.writeFileSync(thumbPath, Buffer.from(base64Data, "base64"));
+          thumbnailUrl = `/uploads/${thumbFilename}`;
+        }
+      } catch (err) {
+        console.warn("[upload] Thumbnail processing error:", err.message);
+      }
+    }
+
+    if (!thumbnailUrl) {
+      thumbnailUrl = relativeUrl;
     }
 
     const pool = await sql.connect(sqlConfig);
@@ -2383,10 +2421,6 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
       });
     }
 
-    // Giữ nguyên ownerId từ token, bỏ qua logic ghi đè từ body nếu không cần thiết
-    // (Hoặc có thể cập nhật ownerId = wantId nếu wantId hợp lệ và người dùng có quyền admin)
-    // Ở đây ta ưu tiên ownerId từ token đã xác thực ở dòng 2117.
-
     const danhMucIdRaw = getMultipartField(req.body, ["danh_muc_id", "categoryId"]);
     const danhMucId = (Number.isFinite(Number(danhMucIdRaw)) && Number(danhMucIdRaw) > 0) ? Number(danhMucIdRaw) : null;
     const forKidsRaw = getMultipartField(req.body, ["forKids", "forkids"]);
@@ -2399,13 +2433,14 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
       .input("Description", sql.NVarChar(sql.MAX), description)
       .input("Duration", sql.Int, durationSeconds)
       .input("Path", sql.NVarChar(500), relativeUrl)
+      .input("Thumbnail", sql.NVarChar(500), thumbnailUrl)
       .input("DanhMucId", sql.Int, danhMucId)
       .input("ForKids", sql.Bit, forKids)
       .query(
         "DECLARE @T TABLE (Id INT, Title NVARCHAR(255), Description NVARCHAR(MAX), RelativeUrl NVARCHAR(500), UploadedAt DATETIME); " +
         "INSERT INTO dbo.video (nguoi_dung_id, tieu_de, mo_ta, duong_dan_video, duong_dan_anh_bia, thoi_luong, luot_xem, ngay_tao, ngay_cap_nhat, danh_muc_id, tag_id, trang_thai, danh_cho_tre_em) " +
           "OUTPUT INSERTED.video_id AS Id, INSERTED.tieu_de AS Title, INSERTED.mo_ta AS Description, INSERTED.duong_dan_video AS RelativeUrl, INSERTED.ngay_tao AS UploadedAt INTO @T " +
-          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Path, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, N'cho_duyet', @ForKids); " +
+          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Thumbnail, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, N'cho_duyet', @ForKids); " +
         "SELECT * FROM @T;"
       );
 

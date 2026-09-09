@@ -1138,6 +1138,14 @@ async function uploadVideo() {
     form.append("thoi_luong", String(durationSeconds));
     form.append("video", file);
 
+    // Ảnh bìa tùy chỉnh hoặc frame đã chọn
+    const thumbInput = document.getElementById("thumbnailInput");
+    if (thumbInput && thumbInput.files && thumbInput.files.length > 0) {
+        form.append("thumbnail", thumbInput.files[0]);
+    } else if (window.selectedThumbnailBase64) {
+        form.append("thumbnailData", window.selectedThumbnailBase64);
+    }
+
     // Chuẩn bị UI
     if (progressContainer) progressContainer.style.display = "block";
     if (uploadBtn) uploadBtn.disabled = true;
