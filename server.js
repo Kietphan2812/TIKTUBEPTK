@@ -524,7 +524,8 @@ function videoFromRow(row) {
     NguoiDungId: L.nguoidungid ?? L.nguoi_dung_id,
     TenDangNhap: L.tendangnhap ?? L.ten_dang_nhap,
     Avatar: L.avatar ?? L.anh_dai_dien ?? null,
-    ThumbnailUrl: L.thumbnailurl ?? L.anh_thumbnail ?? L.duong_dan_anh_bia ?? null
+    ThumbnailUrl: L.thumbnailurl ?? L.anh_thumbnail ?? L.duong_dan_anh_bia ?? null,
+    TrangThai: L.trangthai ?? L.trang_thai ?? null
   };
 }
 
@@ -1313,9 +1314,10 @@ app.get("/api/videos", optionalAuthenticateToken, async (req, res) => {
   }
 });
 
-app.get("/api/videos/history/:userId", authenticateToken, async (req, res) => {
+app.get("/api/videos/history/:userId", optionalAuthenticateToken, async (req, res) => {
   try {
-    const userId = req.user.nguoi_dung_id;
+    const rawUid = req.params.userId || req.user?.nguoi_dung_id;
+    const userId = Number(rawUid);
     if (!Number.isFinite(userId) || userId <= 0) {
       return res.status(400).json({ ok: false, error: "ID người dùng không hợp lệ." });
     }
@@ -1325,22 +1327,23 @@ app.get("/api/videos/history/:userId", authenticateToken, async (req, res) => {
       .input("Uid", sql.Int, userId)
       .query(
         "SELECT " +
-          "l.video_id AS Id, " +
-          "l.tieu_de AS Title, " +
-          "l.mo_ta AS Description, " +
-          "l.video_url AS RelativeUrl, " +
+          "v.video_id AS Id, " +
+          "v.tieu_de AS Title, " +
+          "v.mo_ta AS Description, " +
+          "v.duong_dan_video AS RelativeUrl, " +
+          "v.duong_dan_anh_bia AS ThumbnailUrl, " +
+          "v.trang_thai AS TrangThai, " +
           "ISNULL(v.luot_xem, 0) AS LuotXem, " +
-          "ISNULL((SELECT COUNT(*) FROM dbo.luot_thich lt WHERE lt.video_id = l.video_id), 0) AS SoLike, " +
-          "ISNULL((SELECT COUNT(*) FROM dbo.binh_luan bl WHERE bl.video_id = l.video_id), 0) AS SoBinhLuan, " +
-          "l.thoi_gian_dang AS UploadedAt, " +
+          "ISNULL((SELECT COUNT(*) FROM dbo.luot_thich lt WHERE lt.video_id = v.video_id), 0) AS SoLike, " +
+          "ISNULL((SELECT COUNT(*) FROM dbo.binh_luan bl WHERE bl.video_id = v.video_id), 0) AS SoBinhLuan, " +
+          "v.ngay_tao AS UploadedAt, " +
           "u.ten_dang_nhap AS TenDangNhap, " +
           "u.anh_dai_dien AS Avatar, " +
           "u.do_tuoi AS DoTuoi " +
-          "FROM dbo.lich_su_dang_video l " +
-          "LEFT JOIN dbo.video v ON l.video_id = v.video_id " +
-          "LEFT JOIN dbo.nguoi_dung u ON l.nguoi_dung_id = u.nguoi_dung_id " +
-          "WHERE l.nguoi_dung_id = @Uid " +
-          "ORDER BY (ISNULL(v.luot_xem, 0) + (ISNULL((SELECT COUNT(*) FROM dbo.luot_thich lt WHERE lt.video_id = l.video_id), 0) * 5) + (ISNULL((SELECT COUNT(*) FROM dbo.binh_luan bl WHERE bl.video_id = l.video_id), 0) * 10)) DESC, l.thoi_gian_dang DESC"
+          "FROM dbo.video v " +
+          "LEFT JOIN dbo.nguoi_dung u ON v.nguoi_dung_id = u.nguoi_dung_id " +
+          "WHERE v.nguoi_dung_id = @Uid " +
+          "ORDER BY v.video_id DESC"
       );
     const rows = (result.recordset || []).map((r) => videoFromRow(r));
     res.json({ ok: true, videos: rows });

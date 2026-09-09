@@ -485,14 +485,25 @@ function renderHistoryRow(v) {
 
     const thumbWrapper = document.createElement("div");
     thumbWrapper.className = "historyThumbnail";
-    const thumbVideo = document.createElement("video");
-    thumbVideo.src = apiUrl(v.RelativeUrl);
-    thumbVideo.muted = true;
-    thumbVideo.preload = "metadata";
-    thumbVideo.playsInline = true;
-    thumbVideo.loop = true;
-    thumbVideo.addEventListener("click", (e) => e.stopPropagation());
-    thumbWrapper.appendChild(thumbVideo);
+    if (v.ThumbnailUrl) {
+        const thumbImg = document.createElement("img");
+        thumbImg.src = apiUrl(v.ThumbnailUrl);
+        thumbImg.alt = v.Title || "Thumbnail";
+        thumbImg.style.width = "100%";
+        thumbImg.style.height = "100%";
+        thumbImg.style.objectFit = "cover";
+        thumbImg.style.borderRadius = "6px";
+        thumbWrapper.appendChild(thumbImg);
+    } else {
+        const thumbVideo = document.createElement("video");
+        thumbVideo.src = apiUrl(v.RelativeUrl);
+        thumbVideo.muted = true;
+        thumbVideo.preload = "metadata";
+        thumbVideo.playsInline = true;
+        thumbVideo.loop = true;
+        thumbVideo.addEventListener("click", (e) => e.stopPropagation());
+        thumbWrapper.appendChild(thumbVideo);
+    }
 
     const textWrapper = document.createElement("div");
     textWrapper.className = "historyText";
@@ -505,6 +516,18 @@ function renderHistoryRow(v) {
     tags.className = "historyTags";
     const descText = pickVideoDescription(v);
     tags.textContent = descText || "Không có mô tả";
+
+    if (v.TrangThai === "pending" || v.TrangThai === "cho_duyet") {
+        const badge = document.createElement("span");
+        badge.style.cssText = "display:inline-block; font-size:11px; font-weight:600; padding:2px 6px; border-radius:4px; background:#fff3cd; color:#856404; margin-right:6px;";
+        badge.textContent = "⏳ Đang chờ duyệt";
+        tags.prepend(badge);
+    } else if (v.TrangThai === "rejected" || v.TrangThai === "tu_choi") {
+        const badge = document.createElement("span");
+        badge.style.cssText = "display:inline-block; font-size:11px; font-weight:600; padding:2px 6px; border-radius:4px; background:#f8d7da; color:#721c24; margin-right:6px;";
+        badge.textContent = "❌ Đã từ chối";
+        tags.prepend(badge);
+    }
 
     textWrapper.appendChild(title);
     textWrapper.appendChild(tags);
