@@ -64,6 +64,8 @@ function showRealtimeNotification(n) {
 
 function apiUrl(path) {
     const p = String(path || "");
+    if (!p) return "";
+    if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) return p;
     if (!p.startsWith("/")) return API_BASE ? `${API_BASE}/${p}` : p;
     return API_BASE ? `${API_BASE}${p}` : p;
 }

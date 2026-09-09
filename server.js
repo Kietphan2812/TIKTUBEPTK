@@ -22,6 +22,32 @@ if (databaseUrl) {
   console.log("[db] Using Microsoft SQL Server (Local) connection.");
 }
 
+const cloudinary = require("cloudinary").v2;
+const hasCloudinary = Boolean(process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_URL || process.env.CLOUDINARY_CLOUD_NAME);
+if (hasCloudinary) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "fvqm3bbv",
+    api_key: process.env.CLOUDINARY_API_KEY || "812646526886686",
+    api_secret: process.env.CLOUDINARY_API_SECRET || "XI9jMvn0BGGn9ADa8Sq5CCIxkb8",
+  });
+  console.log("[cloudinary] Cloudinary service initialized for permanent media storage.");
+}
+
+async function uploadToCloudinary(filePath, resourceType = "auto", folder = "tiktube_media") {
+  if (!hasCloudinary) return null;
+  try {
+    const res = await cloudinary.uploader.upload(filePath, {
+      resource_type: resourceType,
+      folder: folder,
+    });
+    try { fs.unlinkSync(filePath); } catch (_) {}
+    return res;
+  } catch (err) {
+    console.error("[cloudinary_upload_error]", err.message);
+    return null;
+  }
+}
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -680,7 +706,12 @@ app.post("/api/auth/register-request", upload.single("avatar"), async (req, res)
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const avatarUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    let avatarUrl = null;
+    if (req.file) {
+      const localPath = path.join(uploadsDir, req.file.filename);
+      const cloudRes = await uploadToCloudinary(localPath, "image", "tiktube_avatars");
+      avatarUrl = cloudRes?.secure_url || `/uploads/${req.file.filename}`;
+    }
 
     registrationRequests.set(email, {
       data: { ten_dang_nhap, email, password, do_tuoi, avatarUrl },
@@ -857,7 +888,9 @@ app.post("/api/auth/update-avatar", authenticateToken, upload.single("avatar"), 
     if (!req.file) {
       return res.status(400).json({ ok: false, error: "Vui lòng chọn ảnh." });
     }
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    const localPath = path.join(uploadsDir, req.file.filename);
+    const cloudRes = await uploadToCloudinary(localPath, "image", "tiktube_avatars");
+    const avatarUrl = cloudRes?.secure_url || `/uploads/${req.file.filename}`;
     const pool = await sql.connect(sqlConfig);
     
     await pool.request()
@@ -2262,12 +2295,19 @@ app.post("/api/videos", authenticateToken, upload.single("video"), async (req, r
     const rawDuration = Number(getMultipartField(req.body, ["thoi_luong", "Thoi_luong"]));
     const clientDuration =
       Number.isFinite(rawDuration) && rawDuration >= 0 ? Math.trunc(rawDuration) : 0;
-    if (!req.file) return res.status(400).json({ ok: false, error: "Thiếu file video." });
-
-    const relativeUrl = `/uploads/${req.file.filename}`; // đường dẫn file thật trên server
+    let relativeUrl = `/uploads/${req.file.filename}`;
     const absoluteFilePath = path.join(uploadsDir, req.file.filename);
     const probedDuration = await probeVideoDurationSeconds(absoluteFilePath);
-    const durationSeconds = probedDuration > 0 ? probedDuration : clientDuration;
+    let durationSeconds = probedDuration > 0 ? probedDuration : clientDuration;
+
+    // Upload to Cloudinary for permanent storage
+    const cloudRes = await uploadToCloudinary(absoluteFilePath, "video", "tiktube_videos");
+    if (cloudRes && cloudRes.secure_url) {
+      relativeUrl = cloudRes.secure_url;
+      if (cloudRes.duration && Number(cloudRes.duration) > 0) {
+        durationSeconds = Math.round(Number(cloudRes.duration));
+      }
+    }
 
     const pool = await sql.connect(sqlConfig);
 
