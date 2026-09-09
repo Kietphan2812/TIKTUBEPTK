@@ -1197,23 +1197,26 @@ async function uploadVideo() {
 
     xhr.onload = async () => {
         if (uploadBtn) uploadBtn.disabled = false;
+        let data = null;
         try {
-            const data = JSON.parse(xhr.responseText);
-            if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
-                if (statusText) statusText.textContent = "Hoàn tất!";
-                if (progressBar) progressBar.style.background = "#2ed573";
-                setStatus("Đăng video thành công. Chờ quản trị viên duyệt!", false);
-                input.value = "";
-                if (titleInput) titleInput.value = "";
-                if (descriptionInput) descriptionInput.value = "";
-                setTimeout(() => {
-                    if (progressContainer) progressContainer.style.display = "none";
-                }, 3000);
-            } else {
-                throw new Error(data.error || "Upload failed");
-            }
+            data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
         } catch (e) {
-            setStatus("Lỗi upload: " + e.message, true);
+            data = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.ok) {
+            if (statusText) statusText.textContent = "Hoàn tất!";
+            if (progressBar) progressBar.style.background = "#2ed573";
+            setStatus("Đăng video thành công. Chờ quản trị viên duyệt!", false);
+            input.value = "";
+            if (titleInput) titleInput.value = "";
+            if (descriptionInput) descriptionInput.value = "";
+            setTimeout(() => {
+                if (progressContainer) progressContainer.style.display = "none";
+            }, 3000);
+        } else {
+            const errorMsg = data?.error || (xhr.responseText && xhr.responseText.length < 150 ? xhr.responseText : `Lỗi máy chủ (${xhr.status})`);
+            setStatus("Lỗi upload: " + errorMsg, true);
         }
     };
 

@@ -2337,10 +2337,18 @@ async function videoColumnsHandler(_req, res) {
   }
 }
 app.get("/api/db/video-columns", videoColumnsHandler);
-const uploadVideoFields = upload.fields([
-  { name: "video", maxCount: 1 },
-  { name: "thumbnail", maxCount: 1 },
-]);
+const uploadVideoFields = (req, res, next) => {
+  upload.fields([
+    { name: "video", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      console.error("[upload_multer_error]", err.message);
+      return res.status(400).json({ ok: false, error: err.message || "Lỗi tải file." });
+    }
+    next();
+  });
+};
 
 app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) => {
   try {
