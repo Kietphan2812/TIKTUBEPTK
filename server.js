@@ -1911,9 +1911,64 @@ app.delete("/api/videos/:id", authenticateToken, async (req, res) => {
     await pool.request().input("Vid", sql.Int, id).query("DELETE FROM dbo.lich_su_dang_video WHERE video_id = @Vid");
     await pool.request().input("Vid", sql.Int, id).query("DELETE FROM dbo.video WHERE video_id = @Vid");
     
+    // Phát tín hiệu xóa video thời gian thực
+    io.emit("videoDeleted", { videoId: id });
+
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+// Cập nhật trạng thái duyệt video (Admin action & Realtime broadcast)
+app.put("/api/videos/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { trang_thai, ly_do, admin_username } = req.body;
+    if (!trang_thai) return res.status(400).json({ error: "Thiếu trang_thai" });
+
+    const pool = await sql.connect(sqlConfig);
+    await pool.request()
+      .input("id", sql.Int, id)
+      .input("trang_thai", sql.NVarChar(50), trang_thai)
+      .query("UPDATE dbo.video SET trang_thai = @trang_thai WHERE video_id = @id");
+
+    try {
+      await pool.request()
+        .input("video_id", sql.Int, id)
+        .input("admin_username", sql.NVarChar(100), admin_username || "Admin")
+        .input("trang_thai_moi", sql.NVarChar(50), trang_thai)
+        .input("ly_do", sql.NVarChar(sql.MAX), ly_do || "")
+        .query("INSERT INTO dbo.kiem_duyet_video (video_id, admin_username, trang_thai_moi, ly_do) VALUES (@video_id, @admin_username, @trang_thai_moi, @ly_do)");
+    } catch (e) {
+      console.warn("[kiem_duyet_video]", e.message);
+    }
+
+    const fullVidRes = await pool.request().input("Id", sql.Int, id).query(`
+      SELECT v.video_id AS Id, v.tieu_de AS Title, v.mo_ta AS Description, v.duong_dan_video AS RelativeUrl,
+             v.ngay_tao AS UploadedAt, v.luot_xem AS LuotXem,
+             (SELECT COUNT(*) FROM dbo.luot_thich lt WHERE lt.video_id = v.video_id) AS SoLike,
+             (SELECT COUNT(*) FROM dbo.binh_luan bl WHERE bl.video_id = v.video_id) AS SoBinhLuan,
+             u.ten_dang_nhap AS TenDangNhap, u.anh_dai_dien AS Avatar,
+             v.duong_dan_anh_bia AS ThumbnailUrl, v.danh_cho_tre_em AS ForKids,
+             v.trang_thai
+      FROM dbo.video v
+      LEFT JOIN dbo.nguoi_dung u ON v.nguoi_dung_id = u.nguoi_dung_id
+      WHERE v.video_id = @Id
+    `);
+
+    const fullVid = fullVidRes.recordset?.[0] ? videoFromRow(fullVidRes.recordset[0]) : null;
+
+    // Phát tín hiệu Socket thời gian thực cho toàn bộ client & admin
+    io.emit("videoStatusChanged", { videoId: Number(id), status: trang_thai, video: fullVid });
+    if (trang_thai === "da_duyet" && fullVid) {
+      io.emit("videoApproved", { videoId: Number(id), video: fullVid });
+    }
+
+    res.json({ ok: true, video: fullVid });
+  } catch (err) {
+    console.error("Error updating status:", err);
+    res.status(500).json({ error: "Failed to update status" });
   }
 });
 
@@ -2486,13 +2541,22 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
         .request()
         .input("Id", sql.Int, Math.trunc(newId))
         .query(
-          "SELECT video_id AS Id, tieu_de AS Title, mo_ta AS Description, " +
-            "duong_dan_video AS RelativeUrl, ngay_tao AS UploadedAt FROM dbo.video WHERE video_id = @Id"
+          "SELECT v.video_id AS Id, v.tieu_de AS Title, v.mo_ta AS Description, " +
+            "v.duong_dan_video AS RelativeUrl, v.duong_dan_anh_bia AS ThumbnailUrl, v.ngay_tao AS UploadedAt, " +
+            "v.trang_thai, u.ten_dang_nhap AS TenDangNhap, u.anh_dai_dien AS Avatar FROM dbo.video v " +
+            "LEFT JOIN dbo.nguoi_dung u ON v.nguoi_dung_id = u.nguoi_dung_id WHERE v.video_id = @Id"
         );
       if (refreshed.recordset?.[0]) videoOut = videoFromRow(refreshed.recordset[0]);
     } else if (videoOut) {
       videoOut = videoFromRow(videoOut);
     }
+
+    // Phát tín hiệu Socket.IO thời gian thực đến Admin và mọi client
+    io.emit("newVideoUploaded", {
+      videoId: newId,
+      video: videoOut,
+      status: "cho_duyet"
+    });
 
     res.json({ ok: true, video: videoOut });
   } catch (err) {

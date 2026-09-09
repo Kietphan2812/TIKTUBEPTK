@@ -25,6 +25,42 @@ function initSocket() {
         showRealtimeNotification(data);
         loadNotifications(); // Refresh badge and list
     });
+
+    // Lắng nghe video mới được duyệt để hiển thị ngay lập tức lên trang chủ mà không cần F5
+    socket.on("videoApproved", (data) => {
+        if (!data || !data.video) return;
+        const v = data.video;
+        console.log("⚡ [Realtime] Video mới đã được duyệt:", v.Title);
+
+        const container = document.getElementById("videoContainer");
+        if (container) {
+            const vidId = v.Id || v.video_id || data.videoId;
+            const existing = container.querySelector(`[data-video-id="${vidId}"]`);
+            if (!existing) {
+                const card = renderVideoCard(v);
+                card.style.animation = "fadeInDown 0.6s ease-out";
+                container.insertBefore(card, container.firstChild);
+            }
+        }
+
+        // Hiện thông báo nổi góc màn hình
+        showRealtimeNotification({
+            noi_dung: `🎬 Video mới: "${v.Title || 'Video'}" vừa được xuất bản!`,
+            link: `video.html?id=${v.Id || v.video_id || data.videoId}`
+        });
+    });
+
+    // Lắng nghe khi video bị xóa
+    socket.on("videoDeleted", (data) => {
+        if (!data || !data.videoId) return;
+        const card = document.querySelector(`[data-video-id="${data.videoId}"]`);
+        if (card) {
+            card.style.transition = "all 0.4s ease";
+            card.style.opacity = "0";
+            card.style.transform = "scale(0.8)";
+            setTimeout(() => card.remove(), 400);
+        }
+    });
 }
 
 function showRealtimeNotification(n) {
@@ -279,13 +315,19 @@ function renderVideoCard(v) {
     card.className = "videoCard";
     card.style.cursor = "pointer";
     card.title = "Xem chi tiết và bình luận";
+    const vidId = v.Id || v.video_id || v.videoId;
+    if (vidId) card.setAttribute("data-video-id", vidId);
 
     const uploaderId = v.NguoiDungId ?? v.nguoidungid ?? v.nguoi_dung_id;
     const videoUrl = v.RelativeUrl || v.relativeurl || v.duong_dan_video;
+    const thumbUrl = v.ThumbnailUrl || v.thumbnailurl || v.duong_dan_anh_bia || v.thumbnail;
 
     // Video container
     const video = document.createElement("video");
     video.src = apiUrl(videoUrl);
+    if (thumbUrl && thumbUrl !== videoUrl && !thumbUrl.endsWith('.mp4')) {
+        video.poster = apiUrl(thumbUrl);
+    }
     video.controls = true;
     video.addEventListener("click", (e) => e.stopPropagation());
     
