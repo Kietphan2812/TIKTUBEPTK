@@ -5,13 +5,22 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const multer = require("multer");
-const sql = require("mssql");
+const { createPgAdapter } = require("./pg_adapter");
+let sql = require("mssql");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const jwt = require("jsonwebtoken");
 
 const nodemailer = require("nodemailer");
 require("dotenv").config();
+
+const databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl) {
+  console.log("[db] Using PostgreSQL (Neon) database connection.");
+  sql = createPgAdapter(databaseUrl);
+} else {
+  console.log("[db] Using Microsoft SQL Server (Local) connection.");
+}
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -21,10 +30,13 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-
 const { sqlConfig } = require("./sql.config");
 
 async function ensureColumnsExist() {
+  if (databaseUrl) {
+    console.log("[db] Neon PostgreSQL database ready.");
+    return;
+  }
   try {
     const pool = await sql.connect(sqlConfig);
     await pool.request().query(`

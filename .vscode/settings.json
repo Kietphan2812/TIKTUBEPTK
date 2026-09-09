@@ -1,8 +1,11 @@
 {
+  "files.associations": {
+    "database_postgres.sql": "plaintext"
+  },
   "mssql.connections": [
     {
       "id": "LocalSQLExpress",
-      "server": "127.0.0.1,1433",
+      "server": "127.0.0.1,1434",
       "database": "VIDEO1",
       "authenticationType": "SqlLogin",
       "user": "sa",
