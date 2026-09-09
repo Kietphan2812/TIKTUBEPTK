@@ -930,28 +930,44 @@ app.post("/api/auth/update-avatar", authenticateToken, upload.single("avatar"), 
   }
 });
 
-app.get("/api/notifications/:userId", authenticateToken, async (req, res) => {
+app.get("/api/notifications/:userId", async (req, res) => {
   try {
-    const userId = req.user.nguoi_dung_id;
+    const rawUid = req.params.userId || req.user?.nguoi_dung_id;
+    const userId = Number(rawUid);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ ok: false, error: "userId không hợp lệ" });
+    }
     const pool = await sql.connect(sqlConfig);
     const result = await pool.request()
       .input("Uid", sql.Int, userId)
       .query("SELECT * FROM dbo.thong_bao WHERE nguoi_dung_id = @Uid ORDER BY ngay_tao DESC");
     res.json({ ok: true, notifications: result.recordset || [] });
   } catch (err) {
+    console.error("[notifications] get error:", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-app.post("/api/notifications/mark-read", authenticateToken, async (req, res) => {
+app.post("/api/notifications/mark-read", async (req, res) => {
   try {
-    const userId = req.user.nguoi_dung_id;
+    const rawUid = req.body.userId || req.user?.nguoi_dung_id;
+    const userId = Number(rawUid);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ ok: false, error: "userId không hợp lệ" });
+    }
     const pool = await sql.connect(sqlConfig);
-    await pool.request()
-      .input("Uid", sql.Int, userId)
-      .query("UPDATE dbo.thong_bao SET da_xem = 1 WHERE nguoi_dung_id = @Uid");
+    if (process.env.DATABASE_URL) {
+      await pool.request()
+        .input("Uid", sql.Int, userId)
+        .query("UPDATE thong_bao SET da_xem = true WHERE nguoi_dung_id = @Uid");
+    } else {
+      await pool.request()
+        .input("Uid", sql.Int, userId)
+        .query("UPDATE dbo.thong_bao SET da_xem = 1 WHERE nguoi_dung_id = @Uid");
+    }
     res.json({ ok: true });
   } catch (err) {
+    console.error("[notifications] mark-read error:", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

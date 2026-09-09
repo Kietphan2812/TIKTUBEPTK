@@ -238,15 +238,27 @@ async function loadNotifications() {
 
 async function markAllNotifsRead() {
     if (!currentUser) return;
+    const uid = currentUser.nguoi_dung_id || currentUser.id || currentUser.ma_nguoi_dung;
+    if (!uid) return;
     try {
         const res = await apiFetch("/api/notifications/mark-read", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: currentUser.nguoi_dung_id }) // Backend vẫn có thể dùng body hoặc token
+            body: JSON.stringify({ userId: uid })
         });
-        const data = await res.json();
-        if (data.ok) loadNotifications();
-    } catch (err) { console.error("Lỗi đánh dấu đã đọc:", err); }
+        const data = await res.json().catch(() => ({ ok: res.ok }));
+        if (data.ok || res.ok) {
+            const badge = document.getElementById("notifBadge");
+            if (badge) badge.style.display = "none";
+            const notifItems = document.querySelectorAll("#notifList > div");
+            notifItems.forEach(item => {
+                item.style.background = "transparent";
+            });
+            await loadNotifications();
+        }
+    } catch (err) { 
+        console.error("Lỗi đánh dấu đã đọc:", err); 
+    }
 }
 
 // Kiểm tra định kỳ mỗi 60 giây
