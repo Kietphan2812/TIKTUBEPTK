@@ -166,6 +166,21 @@ INSERT INTO danh_muc (danh_muc_id, ten_danh_muc) VALUES
 (12, 'Tin tức & xã hội')
 ON CONFLICT (danh_muc_id) DO NOTHING;
 
+-- Seed Thẻ Tag
+INSERT INTO the_tag (danh_muc_id, ten_tag) VALUES
+(1, '#haihuoc'), (1, '#meme'), (1, '#funny'), (1, '#trend'), (1, '#viral'), (1, '#storytime'), (1, '#drama'), (1, '#parody'), (1, '#reaction'), (1, '#troll'), (1, '#prank'), (1, '#shortfilm'), (1, '#giaitri'), (1, '#cliphai'), (1, '#noidunghay'),
+(2, '#amnhac'), (2, '#music'), (2, '#cover'), (2, '#remix'), (2, '#dance'), (2, '#nhay'), (2, '#lipsync'), (2, '#trendmusic'), (2, '#beat'), (2, '#sangtac'), (2, '#dj'), (2, '#karaoke'), (2, '#lofi'), (2, '#nhachay'), (2, '#mv'),
+(3, '#gaming'), (3, '#game'), (3, '#gameplay'), (3, '#stream'), (3, '#livestream'), (3, '#highlight'), (3, '#funnygame'), (3, '#reviewgame'), (3, '#mobilegame'), (3, '#pcgame'), (3, '#freefire'), (3, '#pubg'), (3, '#lienquan'), (3, '#minecraft'), (3, '#fifa'),
+(4, '#giaoduc'), (4, '#hoctap'), (4, '#learning'), (4, '#tienganh'), (4, '#hoctienganh'), (4, '#kienthuc'), (4, '#khoahoc'), (4, '#congnghe'), (4, '#fact'), (4, '#lifehack'), (4, '#tips'), (4, '#study'), (4, '#studytips'), (4, '#education'), (4, '#dayhoc'),
+(5, '#lamdep'), (5, '#beauty'), (5, '#makeup'), (5, '#skincare'), (5, '#thoitrang'), (5, '#fashion'), (5, '#outfit'), (5, '#ootd'), (5, '#reviewmypham'), (5, '#trangdiem'), (5, '#duongda'), (5, '#style'), (5, '#makeuptutorial'), (5, '#fashionstyle'),
+(6, '#amthuc'), (6, '#food'), (6, '#anuong'), (6, '#reviewdoan'), (6, '#monngon'), (6, '#nauan'), (6, '#cooking'), (6, '#streetfood'), (6, '#mukbang'), (6, '#foodreview'), (6, '#anvat'), (6, '#doanvietnam'), (6, '#delicious'), (6, '#foodvlog'),
+(7, '#dulich'), (7, '#travel'), (7, '#vlogdulich'), (7, '#khampha'), (7, '#checkin'), (7, '#reviewdulich'), (7, '#phuot'), (7, '#travelvlog'), (7, '#diadiemdep'), (7, '#vanhoa'), (7, '#trai_nghiem'), (7, '#explore'), (7, '#trip'),
+(8, '#lifestyle'), (8, '#cuocsong'), (8, '#vlog'), (8, '#dailyvlog'), (8, '#routine'), (8, '#selfcare'), (8, '#songtichcuc'), (8, '#minimalism'), (8, '#habits'), (8, '#motngay'), (8, '#tam_su'), (8, '#life'), (8, '#dayinmylife'),
+(9, '#thethao'), (9, '#fitness'), (9, '#gym'), (9, '#workout'), (9, '#yoga'), (9, '#health'), (9, '#suckhoe'), (9, '#giamcan'), (9, '#tangcan'), (9, '#cardio'), (9, '#tapluyen'), (9, '#bodybuilding'), (9, '#fit'), (9, '#healthy'),
+(10, '#review'), (10, '#unboxing'), (10, '#danhgia'), (10, '#kiem_tien'), (10, '#makemoney'), (10, '#kinhdoanh'), (10, '#onlinebusiness'), (10, '#affiliate'), (10, '#banhang'), (10, '#dropshipping'), (10, '#startup'), (10, '#marketing'),
+(11, '#diy'), (11, '#handmade'), (11, '#thucong'), (11, '#sangtao'), (11, '#decor'), (11, '#trangtri'), (11, '#craft'), (11, '#hack'), (11, '#meovat'), (11, '#y_tuong'), (11, '#creative'), (11, '#design'), (11, '#lamdo'),
+(12, '#tintuc'), (12, '#news'), (12, '#drama'), (12, '#xahoi'), (12, '#trend'), (12, '#sukien'), (12, '#viral'), (12, '#hot'), (12, '#capnhat'), (12, '#tinnhanh'), (12, '#thoisu'), (12, '#phantich'), (12, '#tinnong');
+
 -- Views
 DROP VIEW IF EXISTS video_xu_huong;
 CREATE VIEW video_xu_huong AS
