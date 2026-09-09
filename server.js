@@ -138,7 +138,6 @@ async function ensureColumnsExist() {
 
       -- FIX TRIỆT ĐỂ QUAN HỆ TRÊN DIAGRAM (Bản nâng cao)
       -- FIX TRIỆT ĐỂ QUAN HỆ TRÊN DIAGRAM (Bản nâng cao)
-      USE VIDEO1;
       BEGIN TRY
           -- 1. Xóa TẤT CẢ các khóa ngoại cũ nối từ kiem_duyet_video đến tai_khoan_admin
           -- (Phải xóa ngọn trước khi sửa gốc)
@@ -185,7 +184,6 @@ async function ensureColumnsExist() {
     console.error("[db] Error ensuring database structure:", err.message);
   }
 }
-ensureColumnsExist();
 
 const app = express();
 const server = http.createServer(app);
@@ -2478,6 +2476,7 @@ async function backfillStatistics() {
 
 // --- Start Server ---
 (async () => {
+  await ensureColumnsExist();
   await ensureDemoNguoiDung();
   await backfillVideoDurations();
   await backfillStatistics();

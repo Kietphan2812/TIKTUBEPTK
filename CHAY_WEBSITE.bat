@@ -6,8 +6,8 @@ echo   HE THONG TU DONG CHAY WEBSITE VA CAP NHAT LINK (CLOUDFLARE)
 echo ========================================================
 echo.
 
-echo [1/3] Kiem tra may chu Server (Port 8080)...
-netstat -ano | findstr LISTENING | findstr :8080 >nul
+echo [1/3] Kiem tra may chu Server (Port 5000)...
+netstat -ano | findstr LISTENING | findstr :5000 >nul
 if %errorlevel% neq 0 (
     echo =^> May chu chua chay. Dang tu dong bat NodeJS len...
     start "Trai Tim Server - CAM TAT" cmd /k "npm.cmd run dev"
@@ -20,7 +20,7 @@ echo.
 echo [2/3] Dang mo duong ong Cloudflare de lay link xuyen the gioi...
 if exist tunnel.log del tunnel.log
 taskkill /F /IM cloudflared.exe >nul 2>&1
-start "Nguoi Van Chuyen (Cloudflare) - CAM TAT" cmd /c "cloudflared tunnel --url http://localhost:8080 > tunnel.log 2>&1"
+start "Nguoi Van Chuyen (Cloudflare) - CAM TAT" cmd /c ".\cloudflared.exe tunnel --url http://localhost:5000 > tunnel.log 2>&1"
 
 echo Dang cho Cloudflare cap link moi (Mat khoang 5-8 giay, vui long doi...)
 :waitloop
@@ -41,7 +41,7 @@ echo.
 echo ========================================================
 echo HOAN THANH XUAT SAC ROI DO BAN OI!!!
 echo Vui long cho dung 1 PHUT de Github cap nhat.
-echo Sau 1 phut, vao trang web kietphan281204.github.io xem phim thoi!
+echo Sau 1 phut, vao trang web kietphan2812.github.io/TIKTUBEPTK xem phim thoi!
 echo (Vui long THU NHO cac bang mau den xuong day man hinh, KHONG duoc an dau X tat)
 echo ========================================================
 pause

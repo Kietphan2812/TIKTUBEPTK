@@ -7,4 +7,5 @@
 // Local mode: để rỗng để gọi cùng origin (http://localhost:8080).
 // Khi deploy GitHub Pages, đổi thành URL ngrok/backend hiện tại.
 // URL ngrok hiện tại (mỗi lần ngrok đổi link thì cập nhật lại + push).
-window.API_BASE = "https://areas-love-ensemble-praise.trycloudflare.com";
+window.API_BASE = "";
+
