@@ -25,10 +25,18 @@ function createPgAdapter(connectionString) {
     // 5. Replace N'...' with '...'
     text = text.replace(/N'((?:[^']|'')*)'/g, "'$1'");
 
-    // 6. Replace OUTPUT INSERTED.col [AS alias] with RETURNING col [AS alias]
-    text = text.replace(/\bOUTPUT\s+INSERTED\./gi, "RETURNING ");
-    text = text.replace(/,\s*INSERTED\./gi, ", ");
-    text = text.replace(/\s+INTO\s+@\w+/gi, ""); // remove INTO @T table variable
+    // 6. Handle T-SQL table variables and OUTPUT INSERTED
+    text = text.replace(/DECLARE\s+@\w+\s+TABLE\s*\([^)]*\)\s*;?\s*/gi, "");
+    text = text.replace(/;\s*SELECT\s+\*\s+FROM\s+@\w+\s*;?\s*$/gi, "");
+
+    const outputMatch = text.match(/\bOUTPUT\s+([\s\S]*?)(?:\s+INTO\s+@\w+)?\s+VALUES/i);
+    let returningCols = null;
+    if (outputMatch) {
+      returningCols = outputMatch[1]
+        .replace(/INSERTED\./gi, "")
+        .trim();
+      text = text.replace(outputMatch[0], "VALUES");
+    }
 
     // 7. Handle SELECT TOP (N) / SELECT TOP N
     let topMatch = text.match(/\bSELECT\s+(DISTINCT\s+)?TOP\s*\(?(\d+)\)?\s+/i);
@@ -42,8 +50,6 @@ function createPgAdapter(connectionString) {
     // 8. Replace parameters @name with $1, $2, ...
     const values = [];
     const paramRegex = /@([a-zA-Z0-9_]+)/g;
-    let match;
-    const usedParams = [];
     
     // Replace while preserving parameter order
     text = text.replace(paramRegex, (full, name) => {
@@ -52,7 +58,13 @@ function createPgAdapter(connectionString) {
       return `$${values.length}`;
     });
 
-    if (limitVal && !text.toUpperCase().includes("LIMIT")) {
+    text = text.trim().replace(/;+$/, "");
+
+    if (returningCols) {
+      text = `${text} RETURNING ${returningCols}`;
+    }
+
+    if (limitVal && !text.toUpperCase().includes("LIMIT") && !text.toUpperCase().includes("RETURNING")) {
       text = `${text} LIMIT ${limitVal}`;
     }
 
@@ -117,6 +129,7 @@ function createPgAdapter(connectionString) {
     Bit: "Bit",
     Float: "Float",
     DateTime: "DateTime",
+    MAX: "MAX",
   };
 
   return adapter;
