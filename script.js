@@ -1271,8 +1271,11 @@ async function uploadVideo() {
 
         if (xhr.status >= 200 && xhr.status < 300 && data && data.ok) {
             if (statusText) statusText.textContent = "Hoàn tất!";
-            if (progressBar) progressBar.style.background = "#2ed573";
-            setStatus("Đăng video thành công. Chờ quản trị viên duyệt!", false);
+            if (data.autoApproved) {
+                setStatus("🎉 Video đã được hệ thống tự động kiểm duyệt an toàn và đăng tải thành công!", false);
+            } else {
+                setStatus(data.moderationMessage || "Video đang chờ quản trị viên duyệt do có nội dung cần xem xét!", false);
+            }
             input.value = "";
             if (titleInput) titleInput.value = "";
             if (descriptionInput) descriptionInput.value = "";

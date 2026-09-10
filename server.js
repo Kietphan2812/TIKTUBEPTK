@@ -12,6 +12,7 @@ const { execFile } = require("child_process");
 const jwt = require("jsonwebtoken");
 
 const nodemailer = require("nodemailer");
+const { moderateVideoContent } = require("./moderation");
 require("dotenv").config();
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -2495,6 +2496,11 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
     const forKidsRaw = getMultipartField(req.body, ["forKids", "forkids"]);
     const forKids = forKidsRaw === "yes" ? 1 : 0;
 
+    // KIỂM DUYỆT TỰ ĐỘNG (Auto-Moderation: 18+, dâm dục, kinh dị, tục tĩu)
+    const modResult = moderateVideoContent({ title, description });
+    const initialStatus = modResult.isClean ? "da_duyet" : "cho_duyet";
+    console.log(`[AutoMod] Video "${title}" -> Clean: ${modResult.isClean} | Status: ${initialStatus} | Reason: ${modResult.reason}`);
+
     const insert = await pool
       .request()
       .input("NguoiDungId", sql.Int, Math.trunc(ownerId))
@@ -2504,12 +2510,13 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
       .input("Path", sql.NVarChar(500), relativeUrl)
       .input("Thumbnail", sql.NVarChar(500), thumbnailUrl)
       .input("DanhMucId", sql.Int, danhMucId)
+      .input("TrangThai", sql.NVarChar(50), initialStatus)
       .input("ForKids", sql.Bit, forKids)
       .query(
         "DECLARE @T TABLE (Id INT, Title NVARCHAR(255), Description NVARCHAR(MAX), RelativeUrl NVARCHAR(500), UploadedAt DATETIME); " +
         "INSERT INTO dbo.video (nguoi_dung_id, tieu_de, mo_ta, duong_dan_video, duong_dan_anh_bia, thoi_luong, luot_xem, ngay_tao, ngay_cap_nhat, danh_muc_id, tag_id, trang_thai, danh_cho_tre_em) " +
           "OUTPUT INSERTED.video_id AS Id, INSERTED.tieu_de AS Title, INSERTED.mo_ta AS Description, INSERTED.duong_dan_video AS RelativeUrl, INSERTED.ngay_tao AS UploadedAt INTO @T " +
-          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Thumbnail, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, N'cho_duyet', @ForKids); " +
+          "VALUES (@NguoiDungId, @Title, NULLIF(@Description, N''), @Path, @Thumbnail, @Duration, CAST(0 AS BIGINT), GETUTCDATE(), GETUTCDATE(), @DanhMucId, NULL, @TrangThai, @ForKids); " +
         "SELECT * FROM @T;"
       );
 
@@ -2538,6 +2545,20 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
       }
     }
 
+    // Tự động ghi nhật ký vào bảng kiểm duyệt
+    if (Number.isFinite(newId) && newId > 0) {
+      try {
+        await pool.request()
+          .input("video_id", sql.Int, newId)
+          .input("admin_username", sql.NVarChar(100), "admin")
+          .input("trang_thai_moi", sql.NVarChar(50), initialStatus)
+          .input("ly_do", sql.NVarChar(sql.MAX), modResult.reason)
+          .query("INSERT INTO dbo.kiem_duyet_video (video_id, admin_username, trang_thai_moi, ly_do) VALUES (@video_id, @admin_username, @trang_thai_moi, @ly_do)");
+      } catch (e) {
+        console.warn("[kiem_duyet_video auto-log error]:", e.message);
+      }
+    }
+
     let videoOut = insert.recordset?.[0];
     if (Number.isFinite(newId) && newId > 0) {
       const refreshed = await pool
@@ -2558,10 +2579,25 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
     io.emit("newVideoUploaded", {
       videoId: newId,
       video: videoOut,
-      status: "cho_duyet"
+      status: initialStatus,
+      autoModerated: true,
+      isClean: modResult.isClean,
+      reason: modResult.reason
     });
 
-    res.json({ ok: true, video: videoOut });
+    // Nếu video sạch -> Đã duyệt tự động -> Phát ngay tín hiệu duyệt để xuất hiện tức thì trên trang chủ
+    if (initialStatus === "da_duyet" && videoOut) {
+      io.emit("videoApproved", { videoId: newId, video: videoOut });
+    }
+
+    res.json({
+      ok: true,
+      video: videoOut,
+      autoApproved: modResult.isClean,
+      moderationMessage: modResult.isClean
+        ? "Video của bạn đã được kiểm duyệt tự động và đăng tải thành công!"
+        : `Video đang được chuyển vào hàng đợi duyệt thủ công vì: ${modResult.reason}`
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }
