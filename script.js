@@ -7,6 +7,9 @@ if (loginPageBtn) loginPageBtn.onclick = () => window.location.href = "login.htm
 // Backend base URL (for GitHub Pages or separate hosting).
 // Configure in config.js as: window.API_BASE = "https://your-backend.com"
 var API_BASE = typeof window.API_BASE === "string" ? window.API_BASE.replace(/\/+$/, "") : "";
+if (!API_BASE && typeof window !== "undefined" && window.location.protocol === "file:") {
+    API_BASE = "http://127.0.0.1:3000";
+}
 const AUTH_STORAGE_KEYS = ["current_user", "currentUser"];
 let currentUser = null;
 let socket = null;

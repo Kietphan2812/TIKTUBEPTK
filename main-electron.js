@@ -13,25 +13,30 @@ app.setAppUserModelId('com.tiktube.desktop');
 // Kiểm tra xem backend đã chạy chưa
 function checkServerRunning(port) {
   return new Promise((resolve) => {
-    const req = http.get(`http://localhost:${port}/api/health`, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
       resolve(true);
     });
-    req.on('error', () => {
-      // Thử kiểm tra root
-      const reqRoot = http.get(`http://localhost:${port}`, (res2) => {
-        resolve(true);
-      });
-      reqRoot.on('error', () => resolve(false));
-      reqRoot.setTimeout(1000, () => {
-        reqRoot.destroy();
-        resolve(false);
-      });
-    });
+    req.on('error', () => resolve(false));
     req.setTimeout(1000, () => {
       req.destroy();
       resolve(false);
     });
   });
+}
+
+// Chờ server backend khởi động và kết nối CSDL thành công
+async function waitForServer(port, maxSeconds = 25) {
+  console.log(`[Electron] Đang chờ máy chủ nội bộ (port ${port}) kết nối CSDL và sẵn sàng...`);
+  for (let i = 0; i < maxSeconds * 2; i++) {
+    const ok = await checkServerRunning(port);
+    if (ok) {
+      console.log(`[Electron] ✅ Máy chủ backend đã sẵn sàng trên port ${port}!`);
+      return true;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.warn(`[Electron] ⚠️ Hết thời gian chờ backend (25s), vẫn mở cửa sổ.`);
+  return false;
 }
 
 // Tự động khởi động backend nếu chưa chạy
@@ -48,8 +53,8 @@ async function ensureBackendServer() {
       console.error('[Electron] Backend error:', err);
     });
 
-    // Đợi 2.5s để server khởi động xong
-    await new Promise(r => setTimeout(r, 2500));
+    // Chờ server khởi động thực sự
+    await waitForServer(PORT, 25);
   } else {
     console.log(`[Electron] Backend đã chạy sẵn trên port ${PORT}.`);
   }
@@ -73,11 +78,22 @@ function createWindow() {
     }
   });
 
-  // Tải giao diện ứng dụng từ máy chủ local
-  mainWindow.loadURL(`http://localhost:${PORT}`).catch(() => {
-    // Dự phòng mở file trực tiếp nếu server có sự cố
-    mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  });
+  // Tải giao diện ứng dụng từ máy chủ local với cơ chế tự động thử lại
+  const targetUrl = `http://127.0.0.1:${PORT}`;
+  const tryLoad = async (retries = 10) => {
+    try {
+      await mainWindow.loadURL(targetUrl);
+    } catch (err) {
+      if (retries > 0) {
+        console.log(`[Electron] Thử kết nối lại máy chủ sau 1.5s (${retries} lần còn lại)...`);
+        setTimeout(() => tryLoad(retries - 1), 1500);
+      } else {
+        console.error('[Electron] Không thể kết nối máy chủ backend:', err);
+        mainWindow.loadFile(path.join(__dirname, 'index.html'));
+      }
+    }
+  };
+  tryLoad();
 
   // Mở các liên kết ngoài bằng trình duyệt mặc định
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
