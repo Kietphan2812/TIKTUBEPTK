@@ -16,10 +16,22 @@ function initSocket() {
     // Connect to same host
     socket = io(API_BASE || undefined);
     
-    if (currentUser) {
-        const uid = currentUser.nguoi_dung_id || currentUser.id || currentUser.ma_nguoi_dung;
-        if (uid) socket.emit("register", uid);
-    }
+    const doRegister = () => {
+        if (currentUser) {
+            const uid = currentUser.nguoi_dung_id || currentUser.id || currentUser.ma_nguoi_dung;
+            if (uid) {
+                socket.emit("register", uid);
+                console.log("⚡ [Socket] Registered user ID:", uid);
+            }
+        }
+    };
+
+    socket.on("connect", () => {
+        console.log("⚡ [Socket] Connected:", socket.id);
+        doRegister();
+    });
+
+    doRegister();
     
     socket.on("notification", (data) => {
         showRealtimeNotification(data);
@@ -49,11 +61,19 @@ function initSocket() {
             }
         }
 
-        // Hiện thông báo nổi góc màn hình
+        const notifMsg = `🎬 Video mới: "${v.Title || 'Video'}" vừa được xuất bản!`;
+        const notifLink = `video.html?id=${v.Id || v.video_id || data.videoId}`;
+
+        // Hiện thông báo nổi trong trang web
         showRealtimeNotification({
-            noi_dung: `🎬 Video mới: "${v.Title || 'Video'}" vừa được xuất bản!`,
-            link: `video.html?id=${v.Id || v.video_id || data.videoId}`
+            noi_dung: notifMsg,
+            link: notifLink
         });
+
+        // Gửi thông báo hệ thống / điện thoại di động
+        if (typeof showDesktopNotification === "function") {
+            showDesktopNotification("TIKTUBE", notifMsg, notifLink);
+        }
     });
 
     // Lắng nghe khi video bị xóa
@@ -309,8 +329,21 @@ async function markAllNotifsRead() {
     }
 }
 
-// Kiểm tra định kỳ mỗi 60 giây
-setInterval(loadNotifications, 60000);
+// Kiểm tra định kỳ mỗi 10 giây (nhanh chóng cập nhật cho thiết bị di động)
+setInterval(loadNotifications, 10000);
+
+// Khi người dùng mở khóa màn hình điện thoại hoặc quay lại tab trình duyệt
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        loadNotifications();
+        if (socket && !socket.connected) {
+            try { socket.connect(); } catch (_) {}
+        }
+    }
+});
+window.addEventListener("focus", () => {
+    loadNotifications();
+});
 
 function pickVideoDescription(v) {
     if (!v || typeof v !== "object") return "";

@@ -4,11 +4,15 @@
 
 let deferredInstallPrompt = null;
 
-// 1. Register Service Worker
+// 1. Register Service Worker (dùng đường dẫn tương đối để chạy chuẩn trên cả GitHub Pages lẫn local/domain)
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(() => console.log('✅ PWA Service Worker registered'))
+        navigator.serviceWorker.register('sw.js')
+            .then((reg) => {
+                console.log('✅ PWA Service Worker registered:', reg.scope);
+                // Tự động kiểm tra bản cập nhật mới nhất cho điện thoại
+                reg.update().catch(() => {});
+            })
             .catch(err => console.warn('PWA SW registration failed:', err));
     });
 }
@@ -220,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================
-// APP ICON BADGE & NATIVE WINDOWS NOTIFICATIONS
+// APP ICON BADGE & MOBILE / DESKTOP NOTIFICATIONS
 // ============================================
 window.updateAppBadge = function(count) {
     const num = Number(count) || 0;
@@ -233,39 +237,110 @@ window.updateAppBadge = function(count) {
     }
 };
 
-window.showDesktopNotification = function(title, body, link = null) {
+window.showDesktopNotification = async function(title, body, link = null) {
     if (!('Notification' in window)) return;
-    
-    const trigger = () => {
+
+    // Phân giải đường dẫn ảnh icon tuyệt đối theo URL hiện tại (tránh lỗi 404 trên GitHub Pages)
+    let iconUrl = 'icon-192.png';
+    let badgeUrl = 'icon.svg';
+    try {
+        iconUrl = new URL('icon-192.png', window.location.href).href;
+        badgeUrl = new URL('icon.svg', window.location.href).href;
+    } catch (_) {}
+
+    const options = {
+        body: body || 'Bạn có thông báo mới!',
+        icon: iconUrl,
+        badge: badgeUrl,
+        vibrate: [200, 100, 200],
+        tag: 'tiktube-notification-' + Date.now(),
+        renotify: true,
+        data: { link: link || window.location.href }
+    };
+
+    const trigger = async () => {
+        // 1. CHUẨN ĐIỆN THOẠI (Mobile Android & iOS Safari 16.4+): Bắt buộc dùng ServiceWorkerRegistration
+        if ('serviceWorker' in navigator) {
+            try {
+                let reg = await navigator.serviceWorker.getRegistration();
+                if (!reg) {
+                    reg = await Promise.race([
+                        navigator.serviceWorker.ready,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('SW timeout')), 3000))
+                    ]).catch(() => null);
+                }
+                if (reg && reg.showNotification) {
+                    await reg.showNotification(title || 'TIKTUBE', options);
+                    return;
+                }
+            } catch (err) {
+                console.warn('SW showNotification error:', err);
+            }
+        }
+
+        // 2. Fallback cho trình duyệt PC cũ
         try {
-            const notif = new Notification(title || 'TIKTUBE', {
-                body: body || 'Bạn có thông báo mới!',
-                icon: 'icon.svg',
-                badge: 'icon.svg'
-            });
+            const notif = new Notification(title || 'TIKTUBE', options);
             notif.onclick = () => {
                 window.focus();
                 if (link && link !== '#') window.location.href = link;
                 notif.close();
             };
         } catch (e) {
-            console.warn('Desktop notification error:', e);
+            console.warn('Standard Notification fallback error:', e);
         }
     };
 
     if (Notification.permission === 'granted') {
-        trigger();
+        await trigger();
     } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(perm => {
-            if (perm === 'granted') trigger();
-        });
+        try {
+            const perm = await Notification.requestPermission();
+            if (perm === 'granted') await trigger();
+        } catch (e) {
+            console.warn('Request permission error:', e);
+        }
     }
 };
 
-// Xin quyền thông báo nhẹ nhàng khi người dùng nhấp chuột lần đầu
-if ('Notification' in window && Notification.permission === 'default') {
-    document.addEventListener('click', function askNotifPerm() {
-        Notification.requestPermission();
-        document.removeEventListener('click', askNotifPerm);
-    }, { once: true });
-}
+// Hộp thoại hướng dẫn bật thông báo trên điện thoại nếu chưa cấp quyền
+window.requestMobileNotificationPermission = async function() {
+    if (!('Notification' in window)) return alert('Trình duyệt của bạn không hỗ trợ thông báo đẩy.');
+    try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+            const banner = document.getElementById('notifPermissionBanner');
+            if (banner) banner.remove();
+            showDesktopNotification('🎉 TIKTUBE', 'Đã bật thông báo thành công trên điện thoại của bạn!');
+        } else if (perm === 'denied') {
+            alert('Bạn đã chặn thông báo. Hãy vào Cài đặt trình duyệt trên điện thoại để cho phép TIKTUBE gửi thông báo!');
+        }
+    } catch (e) {
+        console.warn('requestPermission error:', e);
+    }
+};
+
+// Hiển thị thanh thông báo nhỏ nhắc người dùng điện thoại bấm cho phép
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            const existing = document.getElementById('notifPermissionBanner');
+            if (!existing) {
+                const banner = document.createElement('div');
+                banner.id = 'notifPermissionBanner';
+                banner.style.cssText = 'position:fixed; bottom:15px; left:15px; right:15px; max-width:420px; margin:auto; background:#1e1e2d; color:#fff; padding:12px 16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.3); z-index:99999; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; border:1px solid rgba(255,255,255,0.1);';
+                banner.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:20px;">🔔</span>
+                        <span>Bật thông báo để nhận tin khi có người like, bình luận, đăng video</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="requestMobileNotificationPermission()" style="padding:6px 12px; background:#fe2c55; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px; white-space:nowrap;">Bật ngay</button>
+                        <button onclick="this.parentElement.parentElement.remove()" style="background:none; border:none; color:#aaa; font-size:16px; cursor:pointer;">✕</button>
+                    </div>
+                `;
+                document.body.appendChild(banner);
+            }
+        }
+    }, 1500);
+});
