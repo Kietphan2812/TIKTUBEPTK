@@ -1,0 +1,10 @@
+{
+  "appId": "com.tiktube.app",
+  "appName": "TIKTUBE",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://kietphan2812.github.io/TIKTUBEPTK/",
+    "cleartext": true
+  }
+}
