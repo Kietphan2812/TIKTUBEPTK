@@ -423,15 +423,56 @@ async function addNotification(userId, content, link = null) {
       });
     }
 
-    // 3. Gửi Socket
+    // 3. Đếm số thông báo chưa đọc để gửi badge count
+    let unreadCount = 1;
+    try {
+      const unreadRes = await pool.request()
+        .input("Uid", sql.Int, userId)
+        .query("SELECT COUNT(*) as unread FROM dbo.thong_bao WHERE nguoi_dung_id = @Uid AND (da_xem = 0 OR da_xem = false)");
+      unreadCount = Number(unreadRes.recordset?.[0]?.unread ?? 1);
+    } catch (e) {
+      // fallback
+    }
+
+    // Gửi Socket kèm unreadCount để cập nhật App Badge trên icon
     sendSocketNotification(userId, { 
       noi_dung: content, 
       link, 
       ngay_tao: new Date(),
-      da_xem: 0 
+      da_xem: 0,
+      unreadCount
     });
   } catch (err) {
     console.error("[Notify] Error:", err.message);
+  }
+}
+
+// Thông báo cho tất cả người theo dõi khi kênh đăng video mới
+async function notifySubscribers(channelId, videoId, videoTitle) {
+  try {
+    const pool = await sql.connect(sqlConfig);
+    const channelInfo = await pool.request()
+      .input("Cid", sql.Int, channelId)
+      .query("SELECT ten_dang_nhap FROM dbo.nguoi_dung WHERE nguoi_dung_id = @Cid");
+    const channelName = channelInfo.recordset?.[0]?.ten_dang_nhap || "Kênh bạn theo dõi";
+
+    const subs = await pool.request()
+      .input("Cid", sql.Int, channelId)
+      .query("SELECT nguoi_dung_id FROM dbo.dang_ky_kenh WHERE kenh_id = @Cid");
+    
+    const subList = subs.recordset || [];
+    for (const s of subList) {
+      const subId = Number(s.nguoi_dung_id);
+      if (subId && subId !== Number(channelId)) {
+        await addNotification(
+          subId,
+          `🎬 ${channelName} vừa đăng video mới: "${videoTitle}"`,
+          `video.html?id=${videoId}`
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("[notifySubscribers warning]:", err.message);
   }
 }
 
@@ -959,7 +1000,9 @@ app.get("/api/notifications/:userId", async (req, res) => {
     const result = await pool.request()
       .input("Uid", sql.Int, userId)
       .query("SELECT * FROM dbo.thong_bao WHERE nguoi_dung_id = @Uid ORDER BY ngay_tao DESC");
-    res.json({ ok: true, notifications: result.recordset || [] });
+    const rows = result.recordset || [];
+    const unreadCount = rows.filter(n => !n.da_xem).length;
+    res.json({ ok: true, notifications: rows, unreadCount });
   } catch (err) {
     console.error("[notifications] get error:", err.message);
     res.status(500).json({ ok: false, error: err.message });
@@ -1981,6 +2024,10 @@ app.put("/api/videos/:id/status", async (req, res) => {
     io.emit("videoStatusChanged", { videoId: Number(id), status: trang_thai, video: fullVid });
     if (trang_thai === "da_duyet" && fullVid) {
       io.emit("videoApproved", { videoId: Number(id), video: fullVid });
+      const channelOwnerId = fullVid.NguoiDungId || fullVid.nguoi_dung_id;
+      if (channelOwnerId) {
+        notifySubscribers(channelOwnerId, Number(id), fullVid.Title);
+      }
     }
 
     res.json({ ok: true, video: fullVid });
@@ -2147,6 +2194,29 @@ app.post("/api/videos/:id/comments", authenticateToken, async (req, res) => {
     if (ownerId && ownerId !== bodyUserId) {
         const fullMsg = `${ten} đã bình luận: "${noiDung}" (trên video: ${vTitle})`;
         addNotification(ownerId, fullMsg, `video.html?id=${videoId}`);
+    }
+
+    // Kiểm tra tag tên / nhắc đến @username trong bình luận
+    const mentions = noiDung.match(/@([a-zA-Z0-9_\.]+)/g);
+    if (mentions && mentions.length > 0) {
+      const mentionedNames = [...new Set(mentions.map(m => m.slice(1).trim()))];
+      for (const targetName of mentionedNames) {
+        try {
+          const targetRes = await pool.request()
+            .input("TargetName", sql.NVarChar(100), targetName)
+            .query("SELECT nguoi_dung_id FROM dbo.nguoi_dung WHERE LOWER(ten_dang_nhap) = LOWER(@TargetName)");
+          const targetId = Number(targetRes.recordset?.[0]?.nguoi_dung_id);
+          if (targetId && targetId !== bodyUserId && targetId !== ownerId) {
+            addNotification(
+              targetId,
+              `🔔 ${ten} đã nhắc đến bạn trong một bình luận: "${noiDung.slice(0, 80)}"`,
+              `video.html?id=${videoId}`
+            );
+          }
+        } catch (e) {
+          console.warn("[mention notify error]:", e.message);
+        }
+      }
     }
 
     res.json({
@@ -2726,6 +2796,7 @@ app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) =
     // Nếu video sạch -> Đã duyệt tự động -> Phát ngay tín hiệu duyệt để xuất hiện tức thì trên trang chủ
     if (initialStatus === "da_duyet" && videoOut) {
       io.emit("videoApproved", { videoId: newId, video: videoOut });
+      notifySubscribers(ownerId, newId, title);
     }
 
     res.json({

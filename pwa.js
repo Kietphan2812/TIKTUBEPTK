@@ -218,3 +218,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ============================================
+// APP ICON BADGE & NATIVE WINDOWS NOTIFICATIONS
+// ============================================
+window.updateAppBadge = function(count) {
+    const num = Number(count) || 0;
+    if ('setAppBadge' in navigator) {
+        if (num > 0) {
+            navigator.setAppBadge(num).catch(e => console.warn('setAppBadge error:', e));
+        } else {
+            navigator.clearAppBadge().catch(e => console.warn('clearAppBadge error:', e));
+        }
+    }
+};
+
+window.showDesktopNotification = function(title, body, link = null) {
+    if (!('Notification' in window)) return;
+    
+    const trigger = () => {
+        try {
+            const notif = new Notification(title || 'TIKTUBE', {
+                body: body || 'Bạn có thông báo mới!',
+                icon: 'icon.svg',
+                badge: 'icon.svg'
+            });
+            notif.onclick = () => {
+                window.focus();
+                if (link && link !== '#') window.location.href = link;
+                notif.close();
+            };
+        } catch (e) {
+            console.warn('Desktop notification error:', e);
+        }
+    };
+
+    if (Notification.permission === 'granted') {
+        trigger();
+    } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(perm => {
+            if (perm === 'granted') trigger();
+        });
+    }
+};
+
+// Xin quyền thông báo nhẹ nhàng khi người dùng nhấp chuột lần đầu
+if ('Notification' in window && Notification.permission === 'default') {
+    document.addEventListener('click', function askNotifPerm() {
+        Notification.requestPermission();
+        document.removeEventListener('click', askNotifPerm);
+    }, { once: true });
+}

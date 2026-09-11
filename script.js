@@ -23,6 +23,12 @@ function initSocket() {
     
     socket.on("notification", (data) => {
         showRealtimeNotification(data);
+        if (data.noi_dung && typeof showDesktopNotification === "function") {
+            showDesktopNotification("TIKTUBE", data.noi_dung, data.link);
+        }
+        if (typeof data.unreadCount === "number" && typeof updateAppBadge === "function") {
+            updateAppBadge(data.unreadCount);
+        }
         loadNotifications(); // Refresh badge and list
     });
 
@@ -240,8 +246,13 @@ async function loadNotifications() {
         const data = await res.json();
         if (data.ok) {
             const list = data.notifications || [];
-            const unread = list.filter(n => !n.da_xem).length;
+            const unread = typeof data.unreadCount === "number" ? data.unreadCount : list.filter(n => !n.da_xem).length;
             
+            // Cập nhật số đỏ trên icon ứng dụng PWA (Desktop/Taskbar)
+            if (typeof updateAppBadge === "function") {
+                updateAppBadge(unread);
+            }
+
             if (badge) {
                 if (unread > 0) {
                     badge.textContent = unread > 99 ? "99+" : unread;
@@ -286,6 +297,7 @@ async function markAllNotifsRead() {
         if (data.ok || res.ok) {
             const badge = document.getElementById("notifBadge");
             if (badge) badge.style.display = "none";
+            if (typeof updateAppBadge === "function") updateAppBadge(0);
             const notifItems = document.querySelectorAll("#notifList > div");
             notifItems.forEach(item => {
                 item.style.background = "transparent";
