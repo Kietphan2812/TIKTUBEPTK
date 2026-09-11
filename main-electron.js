@@ -61,7 +61,10 @@ async function ensureBackendServer() {
 }
 
 function createWindow() {
-  const iconPath = path.join(__dirname, 'icon-512.png');
+  const fs = require('fs');
+  const iconIco = path.join(__dirname, 'icon.ico');
+  const iconPng = path.join(__dirname, 'icon-512.png');
+  const iconPath = fs.existsSync(iconIco) ? iconIco : iconPng;
 
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -78,27 +81,39 @@ function createWindow() {
     }
   });
 
-  // Tải giao diện ứng dụng từ máy chủ local với cơ chế tự động thử lại
-  const targetUrl = `http://127.0.0.1:${PORT}`;
-  const tryLoad = async (retries = 10) => {
-    try {
-      await mainWindow.loadURL(targetUrl);
-    } catch (err) {
-      if (retries > 0) {
-        console.log(`[Electron] Thử kết nối lại máy chủ sau 1.5s (${retries} lần còn lại)...`);
-        setTimeout(() => tryLoad(retries - 1), 1500);
-      } else {
-        console.error('[Electron] Không thể kết nối máy chủ backend:', err);
-        mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  const liveUrl = 'https://kietphan2812.github.io/TIKTUBEPTK/';
+  const localUrl = `http://127.0.0.1:${PORT}`;
+
+  if (app.isPackaged) {
+    // Khi đã đóng gói thành file .exe gửi cho người khác cài đặt:
+    // Tự động kết nối tới hệ thống đám mây để xem video trực tuyến ngay
+    mainWindow.loadURL(liveUrl).catch(() => {
+      mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    });
+  } else {
+    // Chế độ phát triển nội bộ trên máy
+    const tryLoad = async (retries = 10) => {
+      try {
+        await mainWindow.loadURL(localUrl);
+      } catch (err) {
+        if (retries > 0) {
+          console.log(`[Electron] Thử kết nối lại máy chủ sau 1.5s (${retries} lần còn lại)...`);
+          setTimeout(() => tryLoad(retries - 1), 1500);
+        } else {
+          console.log('[Electron] Chuyển hướng sang dịch vụ đám mây...');
+          mainWindow.loadURL(liveUrl).catch(() => {
+            mainWindow.loadFile(path.join(__dirname, 'index.html'));
+          });
+        }
       }
-    }
-  };
-  tryLoad();
+    };
+    tryLoad();
+  }
 
   // Mở các liên kết ngoài bằng trình duyệt mặc định
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      if (!url.includes(`localhost:${PORT}`)) {
+      if (!url.includes(`localhost:${PORT}`) && !url.includes('kietphan2812.github.io')) {
         shell.openExternal(url);
         return { action: 'deny' };
       }
@@ -122,7 +137,7 @@ function createWindow() {
         { label: 'Quay lại', accelerator: 'Alt+Left', click: () => mainWindow.webContents.canGoBack() && mainWindow.webContents.goBack() },
         { label: 'Tiến lên', accelerator: 'Alt+Right', click: () => mainWindow.webContents.canGoForward() && mainWindow.webContents.goForward() },
         { type: 'separator' },
-        { label: 'Trang chủ', accelerator: 'CmdOrCtrl+H', click: () => mainWindow.loadURL(`http://localhost:${PORT}`) },
+        { label: 'Trang chủ', accelerator: 'CmdOrCtrl+H', click: () => mainWindow.loadURL(app.isPackaged ? liveUrl : localUrl) },
         { label: 'Tải lại trang', accelerator: 'CmdOrCtrl+R', click: () => mainWindow.reload() }
       ]
     },
@@ -149,7 +164,9 @@ function createWindow() {
 
 // Khởi chạy ứng dụng
 app.whenReady().then(async () => {
-  await ensureBackendServer();
+  if (!app.isPackaged) {
+    await ensureBackendServer();
+  }
   createWindow();
 
   app.on('activate', () => {

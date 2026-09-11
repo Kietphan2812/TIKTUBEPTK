@@ -3,4 +3,5 @@ node_modules/
 uploads/
 cloudflared.exe
 tunnel.log
+dist/
 

@@ -2,12 +2,60 @@
   "name": "da-websiet-video",
   "version": "1.0.0",
   "private": true,
-  "main": "server.js",
+  "main": "main-electron.js",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
     "app": "node run-electron.js",
+    "dist": "node build-installer.js",
     "selftest-upload": "node server.js --selftest-upload"
+  },
+  "build": {
+    "appId": "com.tiktube.desktop",
+    "productName": "TIKTUBE",
+    "copyright": "Copyright © 2026 TIKTUBE PTK",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TIKTUBE"
+    },
+    "files": [
+      "main-electron.js",
+      "index.html",
+      "video.html",
+      "upload.html",
+      "user.html",
+      "history.html",
+      "subscriptions.html",
+      "login.html",
+      "style.css",
+      "script.js",
+      "config.js",
+      "pwa.js",
+      "manifest.json",
+      "icon.ico",
+      "icon-192.png",
+      "icon-512.png",
+      "icon.svg"
+    ]
   },
   "dependencies": {
     "cloudinary": "^2.11.0",
@@ -23,6 +71,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "electron": "^44.3.0"
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
   }
 }
