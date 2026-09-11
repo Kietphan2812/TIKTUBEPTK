@@ -405,8 +405,9 @@
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                         <span>Tải xuống</span>
                     </button>
-                    <button type="button" class="action-btn circle-btn">
-                        <span>...</span>
+                    <button type="button" class="action-btn" onclick="openReportModal()" style="color: #dc2626;" title="Báo cáo vi phạm video">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+                        <span>Báo cáo</span>
                     </button>
                 </div>
             </div>
@@ -443,6 +444,49 @@
         </div>
     </main>
 
+    <!-- Modal Báo Cáo Vi Phạm Video -->
+    <div id="reportModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: #fff; width: 92%; max-width: 460px; border-radius: 12px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; color: #b91c1c; display: flex; align-items: center; gap: 8px;">
+                    🚩 Báo cáo vi phạm video
+                </h3>
+                <button type="button" onclick="closeReportModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #666;">✕</button>
+            </div>
+            <p style="font-size: 13px; color: #555; margin-bottom: 14px;">Hãy chọn lý do bạn muốn báo cáo video này đến quản trị viên:</p>
+            
+            <form id="reportForm" onsubmit="submitVideoReport(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="reportReason" value="Nội dung 18+, khiêu dâm, kích dục" required checked>
+                    🔞 Nội dung 18+, khiêu dâm, dâm dục
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="reportReason" value="Nội dung bạo lực, kinh dị, máu me">
+                    🩸 Bạo lực, kinh dị, máu me, tự sát
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="reportReason" value="Từ ngữ thô tục, chửi thề, lăng mạ">
+                    🤬 Từ ngữ thô tục, chửi thề, xúc phạm
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="reportReason" value="Cờ bạc, cá độ, lừa đảo trực tuyến">
+                    🎰 Cờ bạc, cá độ, lừa đảo trực tuyến
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="reportReason" value="Nội dung gây hiểu lầm / spam">
+                    ⚠️ Nội dung gây hiểu lầm, giả mạo, spam
+                </label>
+
+                <textarea id="reportDetailInput" placeholder="Mô tả chi tiết hơn (nếu có)..." rows="3" style="width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 8px; font-size: 13px; margin-top: 4px; resize: none; font-family: inherit; box-sizing: border-box;"></textarea>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+                    <button type="button" onclick="closeReportModal()" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer;">Hủy</button>
+                    <button type="submit" id="submitReportBtn" style="padding: 8px 20px; border-radius: 6px; border: none; background: #dc2626; color: #fff; font-weight: bold; cursor: pointer;">Gửi Báo Cáo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="config.js"></script>
     <script src="script.js"></script>
@@ -467,6 +511,61 @@
             } else {
                 alert("Đã sao chép liên kết vào bộ nhớ tạm!");
                 navigator.clipboard.writeText(window.location.href);
+            }
+        }
+
+        // Báo cáo vi phạm
+        function openReportModal() {
+            const modal = document.getElementById('reportModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeReportModal() {
+            const modal = document.getElementById('reportModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function submitVideoReport(event) {
+            event.preventDefault();
+            const submitBtn = document.getElementById('submitReportBtn');
+            const selectedReason = document.querySelector('input[name="reportReason"]:checked')?.value || 'Khác';
+            const detailText = document.getElementById('reportDetailInput')?.value || '';
+
+            // Lấy video ID từ URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const videoId = urlParams.get('id');
+            if (!videoId) return alert('Không tìm thấy thông tin video để báo cáo!');
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Đang gửi...';
+            }
+
+            try {
+                const res = await apiFetch(`/api/videos/${videoId}/report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ly_do: selectedReason, chi_tiet: detailText })
+                });
+                const data = await parseJsonResponse(res);
+
+                if (data.ok) {
+                    alert(data.message || 'Đã gửi báo cáo vi phạm thành công. Cảm ơn bạn!');
+                    closeReportModal();
+                    if (data.autoHidden) {
+                        // Nếu video đã bị ẩn do đủ 3 lượt báo cáo
+                        window.location.href = 'index.html';
+                    }
+                } else {
+                    alert('Lỗi gửi báo cáo: ' + (data.error || 'Vui lòng thử lại sau'));
+                }
+            } catch (err) {
+                alert('Lỗi kết nối khi gửi báo cáo: ' + err.message);
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Gửi Báo Cáo';
+                }
             }
         }
     </script>

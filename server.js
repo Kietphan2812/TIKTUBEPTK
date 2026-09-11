@@ -189,6 +189,20 @@ async function ensureColumnsExist() {
         );
       END
 
+      -- Tạo bảng báo cáo vi phạm video nếu chưa có
+      IF OBJECT_ID('dbo.bao_cao_video', 'U') IS NULL
+      BEGIN
+        CREATE TABLE dbo.bao_cao_video (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          video_id INT NOT NULL,
+          nguoi_dung_id INT NULL,
+          ly_do NVARCHAR(255) NOT NULL,
+          chi_tiet NVARCHAR(MAX),
+          ngay_tao DATETIME DEFAULT GETDATE(),
+          CONSTRAINT FK_baocao_video FOREIGN KEY (video_id) REFERENCES dbo.video(video_id) ON DELETE CASCADE
+        );
+      END
+
       -- FIX TRIỆT ĐỂ QUAN HỆ TRÊN DIAGRAM (Bản nâng cao)
       -- FIX TRIỆT ĐỂ QUAN HỆ TRÊN DIAGRAM (Bản nâng cao)
       BEGIN TRY
@@ -1976,6 +1990,92 @@ app.put("/api/videos/:id/status", async (req, res) => {
   }
 });
 
+// BÁO CÁO VI PHẠM TỪ CỘNG ĐỒNG (Community Report)
+app.post("/api/videos/:id/report", optionalAuthenticateToken, async (req, res) => {
+  try {
+    const videoId = Number(req.params.id);
+    if (!Number.isFinite(videoId) || videoId <= 0) {
+      return res.status(400).json({ ok: false, error: "ID video không hợp lệ." });
+    }
+
+    const { ly_do, chi_tiet } = req.body;
+    if (!ly_do || String(ly_do).trim() === "") {
+      return res.status(400).json({ ok: false, error: "Vui lòng chọn lý do báo cáo vi phạm." });
+    }
+
+    const userId = req.user?.nguoi_dung_id || null;
+    const pool = await sql.connect(sqlConfig);
+
+    // 1. Lưu bản ghi báo cáo vi phạm
+    await pool.request()
+      .input("Vid", sql.Int, videoId)
+      .input("Uid", sql.Int, userId)
+      .input("LyDo", sql.NVarChar(255), String(ly_do).trim())
+      .input("ChiTiet", sql.NVarChar(sql.MAX), String(chi_tiet || "").trim())
+      .query(
+        "INSERT INTO dbo.bao_cao_video (video_id, nguoi_dung_id, ly_do, chi_tiet, ngay_tao) " +
+        "VALUES (@Vid, @Uid, @LyDo, @ChiTiet, GETUTCDATE())"
+      );
+
+    // 2. Đếm tổng số lượt báo cáo cho video này
+    const countRes = await pool.request()
+      .input("Vid", sql.Int, videoId)
+      .query("SELECT COUNT(*) AS total FROM dbo.bao_cao_video WHERE video_id = @Vid");
+    
+    const totalReports = Number(countRes.recordset?.[0]?.total || 0);
+
+    // Lấy thông tin video hiện tại
+    const vidRes = await pool.request().input("Vid", sql.Int, videoId).query("SELECT tieu_de, trang_thai FROM dbo.video WHERE video_id = @Vid");
+    const currentVideo = vidRes.recordset?.[0];
+    const videoTitle = currentVideo?.tieu_de || `#${videoId}`;
+    let autoHidden = false;
+
+    // 3. Cơ chế tự động ẩn video nếu bị >= 3 lượt báo cáo từ cộng đồng
+    if (totalReports >= 3 && currentVideo?.trang_thai === "da_duyet") {
+      await pool.request()
+        .input("Vid", sql.Int, videoId)
+        .query("UPDATE dbo.video SET trang_thai = N'cho_duyet' WHERE video_id = @Vid");
+
+      try {
+        await pool.request()
+          .input("video_id", sql.Int, videoId)
+          .input("admin_username", sql.NVarChar(100), "admin")
+          .input("trang_thai_moi", sql.NVarChar(50), "cho_duyet")
+          .input("ly_do", sql.NVarChar(sql.MAX), `Tự động tạm ẩn do nhận ${totalReports} lượt báo cáo vi phạm từ cộng đồng: ${ly_do}`)
+          .query("INSERT INTO dbo.kiem_duyet_video (video_id, admin_username, trang_thai_moi, ly_do) VALUES (@video_id, @admin_username, @trang_thai_moi, @ly_do)");
+      } catch (e) {
+        console.warn("[kiem_duyet_video report auto-hide error]:", e.message);
+      }
+
+      autoHidden = true;
+      // Phát sự kiện video bị thay đổi trạng thái (ẩn khỏi trang chủ)
+      io.emit("videoStatusChanged", { videoId, status: "cho_duyet" });
+    }
+
+    // 4. Phát tín hiệu Socket thời gian thực cho Admin biết có báo cáo vi phạm mới
+    io.emit("videoReported", {
+      videoId,
+      title: videoTitle,
+      reason: ly_do,
+      detail: chi_tiet,
+      totalReports,
+      autoHidden
+    });
+
+    res.json({
+      ok: true,
+      message: autoHidden
+        ? "Cảm ơn bạn đã báo cáo. Video này đã nhận nhiều phản ánh và đã được hệ thống tự động tạm ẩn để bảo vệ cộng đồng!"
+        : "Cảm ơn bạn đã gửi báo cáo vi phạm. Đội ngũ quản trị sẽ xem xét sớm nhất!",
+      totalReports,
+      autoHidden
+    });
+  } catch (err) {
+    console.error("[report error]", err);
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 app.post("/api/videos/:id/comments", authenticateToken, async (req, res) => {
   try {
     const videoId = Number(req.params.id);
@@ -2411,9 +2511,47 @@ const uploadVideoFields = (req, res, next) => {
   });
 };
 
+// RATE-LIMITING CHỐNG SPAM VIDEO: Tối đa 5 video trong 10 phút, cách nhau tối thiểu 15 giây
+const uploadRateLimiter = new Map();
+function checkUploadRateLimit(userId) {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000; // 10 phút
+  const maxUploads = 5; // Tối đa 5 video / 10 phút
+  const minIntervalMs = 15 * 1000; // Tối thiểu 15 giây giữa 2 lần upload
+
+  let timestamps = uploadRateLimiter.get(userId) || [];
+  timestamps = timestamps.filter(t => (now - t) < windowMs);
+
+  if (timestamps.length > 0) {
+    const lastUpload = timestamps[timestamps.length - 1];
+    const timeSinceLast = now - lastUpload;
+    if (timeSinceLast < minIntervalMs) {
+      const waitSec = Math.ceil((minIntervalMs - timeSinceLast) / 1000);
+      return { allowed: false, error: `Bạn đang tải video quá nhanh. Vui lòng đợi ${waitSec} giây trước khi tải video tiếp theo!` };
+    }
+  }
+
+  if (timestamps.length >= maxUploads) {
+    const oldest = timestamps[0];
+    const waitMins = Math.ceil((windowMs - (now - oldest)) / (60 * 1000));
+    return { allowed: false, error: `Bạn đã đạt giới hạn đăng 5 video / 10 phút để chống spam. Vui lòng đợi ${waitMins} phút nữa!` };
+  }
+
+  timestamps.push(now);
+  uploadRateLimiter.set(userId, timestamps);
+  return { allowed: true };
+}
+
 app.post("/api/videos", authenticateToken, uploadVideoFields, async (req, res) => {
   try {
     const ownerId = req.user.nguoi_dung_id;
+
+    // Kiểm tra Rate-limit chống spam
+    const rateCheck = checkUploadRateLimit(ownerId);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ ok: false, error: rateCheck.error });
+    }
+
     const { title, moTa: description } = readUploadMeta(req);
     const videoFile = req.files?.video?.[0] || req.file;
     if (!videoFile) {

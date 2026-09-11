@@ -37,6 +37,15 @@ const TU_KHOA_TUC_TIU = [
   "bà già mày", "ba gia may", "thằng chó", "thang cho", "con chó", "con cho"
 ];
 
+// Danh mục 4: Cờ bạc, Cá độ, Nhà cái, Lừa đảo trực tuyến
+const TU_KHOA_CO_BAC_LUA_DAO = [
+  "kubet", "thabet", "bj88", "hi88", "jun88", "shbet", "new88", "f8bet", "789bet", "88online", "fun88", "w88",
+  "tài xỉu", "tai xiu", "nổ hũ", "no hu", "bắn cá đổi thưởng", "ban ca doi thuong", "baccarat", "xóc đĩa", "xoc dia",
+  "cá độ bóng đá", "ca do bong da", "cờ bạc", "co bac", "kèo nhà cái", "keo nha cai", "soi cầu", "soi cau", "lô đề", "lo de",
+  "nhận 88k", "nhan 88k", "tặng 88k", "tang 88k", "link bio nhận tiền", "kiếm tiền online lừa đảo", "hoa hồng nạp tiền",
+  "đánh bạc", "danh bac", "casino online", "sòng bạc", "song bac"
+];
+
 // Hàm loại bỏ dấu tiếng Việt để phát hiện viết không dấu
 function removeVietnameseAccents(str) {
   if (!str) return "";
@@ -153,6 +162,17 @@ function moderateVideoContent({ title = "", description = "", tags = "" }) {
     };
   }
 
+  // 4. Quét nhóm Cờ bạc / Cá độ / Lừa đảo trực tuyến
+  const viPhamCoBac = findViolations(fullText, TU_KHOA_CO_BAC_LUA_DAO);
+  if (viPhamCoBac.length > 0) {
+    return {
+      isClean: false,
+      flagCategory: "co_bac_lua_dao",
+      matchedWords: viPhamCoBac,
+      reason: `Phát hiện nội dung cờ bạc / cá độ / lừa đảo (${viPhamCoBac.slice(0, 3).join(", ")})`
+    };
+  }
+
   // Nếu hoàn toàn sạch sẽ
   return {
     isClean: true,
@@ -166,5 +186,6 @@ module.exports = {
   moderateVideoContent,
   TU_KHOA_18_PLUS,
   TU_KHOA_KINH_DI,
-  TU_KHOA_TUC_TIU
+  TU_KHOA_TUC_TIU,
+  TU_KHOA_CO_BAC_LUA_DAO
 };
