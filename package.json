@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "app": "electron main-electron.js",
+    "app": "node run-electron.js",
     "selftest-upload": "node server.js --selftest-upload"
   },
   "dependencies": {
